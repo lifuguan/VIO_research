@@ -12,7 +12,7 @@ import numpy as np
 import math
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--data_dir', type=str, default='/nfs/turbo/coe-hunseok/mingyuy/KITTI_odometry', help='path to the dataset')
+parser.add_argument('--data_dir', type=str, default='./data', help='path to the dataset')
 parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
 parser.add_argument('--save_dir', type=str, default='./results', help='path to save the result')
 
@@ -48,7 +48,7 @@ parser.add_argument('--Lambda', type=float, default=3e-5, help='penalty factor f
 parser.add_argument('--experiment_name', type=str, default='experiment', help='experiment name')
 parser.add_argument('--optimizer', type=str, default='Adam', help='type of optimizer [Adam, SGD]')
 
-parser.add_argument('--pretrain_flownet',type=str, default='./pretrain_models/flownets_bn_EPE2.459.pth.tar', help='wehther to use the pre-trained flownet')
+parser.add_argument('--pretrain_flownet',type=str, default='./model_zoo/flownets_bn_EPE2.459.pth.tar', help='wehther to use the pre-trained flownet')
 parser.add_argument('--pretrain', type=str, default=None, help='path to the pretrained model')
 parser.add_argument('--hflip', default=False, action='store_true', help='whether to use horizonal flipping as augmentation')
 parser.add_argument('--color', default=False, action='store_true', help='whether to use color augmentations')

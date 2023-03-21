@@ -1,0 +1,5 @@
+model_zoo
+results
+__pycache__
+data/poses
+data/sequences
