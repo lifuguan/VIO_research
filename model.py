@@ -73,7 +73,7 @@ class Encoder(nn.Module):
         self.inertial_encoder = Inertial_encoder(opt)
 
     def forward(self, img, imu):
-        v = torch.cat((img[:, :-1], img[:, 1:]), dim=2)
+        v = torch.cat((img[:, :-1], img[:, 1:]), dim=2) # 构建 t->t+1 对
         batch_size = v.size(0)
         seq_len = v.size(1)
 
@@ -145,53 +145,71 @@ class PolicyNet(nn.Module):
 
 # The pose estimation network
 class Pose_RNN(nn.Module):
-    def __init__(self, opt):
+    def __init__(self, opt, transformer = False):
         super(Pose_RNN, self).__init__()
 
         # The main RNN network
         f_len = opt.v_f_len + opt.i_f_len
-        self.rnn = nn.LSTM(
-            input_size=f_len,
-            hidden_size=opt.rnn_hidden_size,
-            num_layers=2,
-            dropout=opt.rnn_dropout_between,
-            batch_first=True)
+        if transformer == False:
+            self.rnn = nn.LSTM(
+                input_size=f_len,
+                hidden_size=opt.rnn_hidden_size,
+                num_layers=2,
+                dropout=opt.rnn_dropout_between,
+                batch_first=True)
+            self.regressor = nn.Sequential(
+                nn.Linear(opt.rnn_hidden_size, 128),
+                nn.LeakyReLU(0.1, inplace=True),
+                nn.Linear(128, 6))
+        elif transformer == True:
+            self.decode_layer = nn.TransformerDecoderLayer(d_model=f_len, nhead=8, dropout=0.1, batch_first=True)
+            self.encode_layer = nn.TransformerEncoderLayer(d_model=f_len, nhead=8, dropout=0.1, batch_first=True)
+            self.regressor = nn.Sequential(
+                nn.Linear(f_len, 128),
+                nn.LeakyReLU(0.1, inplace=True),
+                nn.Linear(128, 6))
+        self.transformer = transformer
+
 
         self.fuse = Fusion_module(opt)
 
         # The output networks
         self.rnn_drop_out = nn.Dropout(opt.rnn_dropout_out)
-        self.regressor = nn.Sequential(
-            nn.Linear(opt.rnn_hidden_size, 128),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Linear(128, 6))
+       
 
     def forward(self, fv, fv_alter, fi, dec, prev=None):
-        if prev is not None:
+        if prev is not None and self.transformer is False:
             prev = (prev[0].transpose(1, 0).contiguous(), prev[1].transpose(1, 0).contiguous())
         
         # Select between fv and fv_alter
         v_in = fv * dec[:, :, :1] + fv_alter * dec[:, :, -1:] if fv_alter is not None else fv
         fused = self.fuse(v_in, fi)
         
-        out, hc = self.rnn(fused) if prev is None else self.rnn(fused, prev)
+        if self.transformer == False:
+            out, hc = self.rnn(fused) if prev is None else self.rnn(fused, prev) # hc = (hn, cn)
+        elif self.transformer == True:
+            out = self.encode_layer(fused) if prev is None else self.decode_layer(fused, prev)
+            hc = out.clone()
+
         out = self.rnn_drop_out(out)
         pose = self.regressor(out)
 
-        hc = (hc[0].transpose(1, 0).contiguous(), hc[1].transpose(1, 0).contiguous())
+        if self.transformer == False:
+            hc = (hc[0].transpose(1, 0).contiguous(), hc[1].transpose(1, 0).contiguous())
+
         return pose, hc
 
 
 
 class DeepVIO(nn.Module):
-    def __init__(self, opt):
+    def __init__(self, opt, transformer = True):
         super(DeepVIO, self).__init__()
 
         self.Feature_net = Encoder(opt)
-        self.Pose_net = Pose_RNN(opt)
+        self.Pose_net = Pose_RNN(opt, transformer)
         self.Policy_net = PolicyNet(opt)
         self.opt = opt
-        
+        self.transformer = transformer
         initialization(self)
 
     def forward(self, img, imu, is_first=True, hc=None, temp=5, selection='gumbel-softmax', p=0.5):
@@ -227,7 +245,8 @@ class DeepVIO(nn.Module):
                     decisions.append(decision)
                     logits.append(logit)
             poses.append(pose)
-            hidden = hc[0].contiguous()[:, -1, :]
+
+            hidden = hc[0].contiguous()[:, -1, :] if self.transformer is False else hc
 
         poses = torch.cat(poses, dim=1)
         decisions = torch.cat(decisions, dim=1)
