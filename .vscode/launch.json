@@ -11,7 +11,24 @@
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "args": ["--experiment_name", "debug"]
-        }
+            "args": ["--experiment_name", "debug", "--seq2seq", "--transformer", "--pretrain", "results/dense_32/checkpoints/081.pth"]
+        },
+        {
+            "name": "train:debug(vanilla)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["--experiment_name", "debug", "--epochs_warmup", "0"]
+        },
+        {
+            "name": "test:debug",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
     ]
 }

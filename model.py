@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from torch.nn.init import kaiming_normal_, orthogonal_
+from torch.nn.init import kaiming_normal_
 import numpy as np
-from torch.distributions.utils import broadcast_all, probs_to_logits, logits_to_probs, lazy_property, clamp_probs
 import torch.nn.functional as F
-
+import math
 
 def conv(batchNorm, in_planes, out_planes, kernel_size=3, stride=1, dropout=0):
     if batchNorm:
@@ -128,7 +127,10 @@ class Fusion_module(nn.Module):
 class PolicyNet(nn.Module):
     def __init__(self, opt):
         super(PolicyNet, self).__init__()
-        in_dim = opt.rnn_hidden_size + opt.i_f_len
+        if opt.transformer is True:
+            in_dim = 768 + opt.i_f_len
+        else:
+            in_dim = opt.rnn_hidden_size + opt.i_f_len
         self.net = nn.Sequential(
             nn.Linear(in_dim, 256),
             nn.LeakyReLU(0.1, inplace=True),
@@ -202,14 +204,15 @@ class Pose_RNN(nn.Module):
 
 
 class DeepVIO(nn.Module):
-    def __init__(self, opt, transformer = True):
+    def __init__(self, opt):
         super(DeepVIO, self).__init__()
 
         self.Feature_net = Encoder(opt)
-        self.Pose_net = Pose_RNN(opt, transformer)
+        self.Pose_net = Pose_RNN(opt, opt.transformer)
         self.Policy_net = PolicyNet(opt)
         self.opt = opt
-        self.transformer = transformer
+        self.transformer = opt.transformer
+        self.dense_connect = opt.dense_connect
         initialization(self)
 
     def forward(self, img, imu, is_first=True, hc=None, temp=5, selection='gumbel-softmax', p=0.5):
@@ -219,7 +222,12 @@ class DeepVIO(nn.Module):
         seq_len = fv.shape[1]
 
         poses, decisions, logits= [], [], []
-        hidden = torch.zeros(batch_size, self.opt.rnn_hidden_size).to(fv.device) if hc is None else hc[0].contiguous()[:, -1, :]
+        if hc is None:
+            hidden = torch.zeros(batch_size, self.opt.rnn_hidden_size).to(fv.device) 
+        elif self.transformer is True:
+            hidden = hc
+        else:
+            hidden = hc[0].contiguous()[:, -1, :]
         fv_alter = torch.zeros_like(fv) # zero padding in the paper, can be replaced by other 
         
         for i in range(seq_len):
@@ -229,7 +237,10 @@ class DeepVIO(nn.Module):
             else:
                 if selection == 'gumbel-softmax':
                     # Otherwise, sample the decision from the policy network
-                    p_in = torch.cat((fi[:, i, :], hidden), -1)
+                    if self.transformer is True:
+                        p_in = torch.cat((fi[:, i, :], hidden[:, -1, :]), -1)
+                    else:
+                        p_in = torch.cat((fi[:, i, :], hidden), -1)
                     logit, decision = self.Policy_net(p_in.detach(), temp)
                     decision = decision.unsqueeze(1)
                     logit = logit.unsqueeze(1)
@@ -246,7 +257,13 @@ class DeepVIO(nn.Module):
                     logits.append(logit)
             poses.append(pose)
 
-            hidden = hc[0].contiguous()[:, -1, :] if self.transformer is False else hc
+            if self.dense_connect is True and self.transformer is True: 
+                if i ==0 and is_first:
+                    hidden = hc
+                else:
+                    hidden = torch.cat([hidden, hc], dim=1)
+            else:
+                hidden = hc[0].contiguous()[:, -1, :] if self.transformer is False else hc
 
         poses = torch.cat(poses, dim=1)
         decisions = torch.cat(decisions, dim=1)
@@ -255,6 +272,121 @@ class DeepVIO(nn.Module):
 
         return poses, decisions, probs, hc
 
+
+class PoseTransformer(nn.Module):
+    def __init__(self, opt):
+        super(PoseTransformer, self).__init__()
+
+        # The main RNN network
+        d_model = opt.v_f_len + opt.i_f_len
+        self.positional_encoding = PositionalEncoding(emb_size=d_model, dropout=0.1)
+        self.decode_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=8, dropout=0.1, batch_first=True)
+        self.encode_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=8, dropout=0.1, batch_first=True)
+        self.regressor = nn.Sequential(
+            nn.Linear(d_model, 128),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Linear(128, 6))
+
+        self.fuse = Fusion_module(opt)
+
+        # The output networks
+        self.rnn_drop_out = nn.Dropout(opt.rnn_dropout_out)
+       
+
+    def forward(self, fv, fv_alter, fi, dec, prev=None):
+        # Select between fv and fv_alter
+        v_in = fv * dec[:, :, :1] + fv_alter * dec[:, :, -1:] if fv_alter is not None else fv
+        fused = self.fuse(v_in, fi)
+        
+        if prev is None:
+            out = self.encode_layer(fused)  
+        else:
+            prev = self.positional_encoding(prev)
+            out = self.decode_layer(fused, prev)
+        hc = out.clone()
+
+        out = self.rnn_drop_out(out)
+        pose = self.regressor(out)
+
+        return pose, hc
+
+
+class DeepVIO2(nn.Module):
+    def __init__(self, opt):
+        super(DeepVIO2, self).__init__()
+
+        self.Feature_net = Encoder(opt)
+        self.Pose_net = PoseTransformer(opt)
+        self.Policy_net = PolicyNet(opt)
+        self.opt = opt
+        initialization(self)
+
+    def forward(self, img, imu, is_first=True, hc=None, temp=5, selection='gumbel-softmax', p=0.5):
+        fv, fi = self.Feature_net(img, imu)
+        batch_size = fv.shape[0]
+        seq_len = fv.shape[1]
+
+        poses, decisions, logits= [], [], []
+        if hc is None:
+            hc = torch.zeros(batch_size, self.opt.v_f_len + self.opt.i_f_len).to(fv.device) 
+
+        fv_alter = torch.zeros_like(fv) # zero padding in the paper, can be replaced by other 
+        
+        for i in range(seq_len):
+            if i == 0 and is_first:
+                # The first relative pose is estimated by both images and imu by default
+                pose, tgt = self.Pose_net(fv[:, i:i+1, :], None, fi[:, i:i+1, :], None, hc)
+            else:
+                if selection == 'gumbel-softmax':
+                    # Otherwise, sample the decision from the policy network
+                    p_in = torch.cat((fi[:, i, :], hc[:, -1, :]), -1)
+
+                    logit, decision = self.Policy_net(p_in.detach(), temp)
+                    decision = decision.unsqueeze(1)
+                    logit = logit.unsqueeze(1)
+                    pose, tgt = self.Pose_net(fv[:, i:i+1, :], fv_alter[:, i:i+1, :], fi[:, i:i+1, :], decision, hc)
+                    decisions.append(decision)
+                    logits.append(logit)
+                elif selection == 'random':
+                    decision = (torch.rand(fv.shape[0], 1, 2) < p).float()
+                    decision[:,:,1] = 1-decision[:,:,0]
+                    decision = decision.to(fv.device)
+                    logit = 0.5*torch.ones((fv.shape[0], 1, 2)).to(fv.device)
+                    pose, tgt = self.Pose_net(fv[:, i:i+1, :], fv_alter[:, i:i+1, :], fi[:, i:i+1, :], decision, hc)
+                    decisions.append(decision)
+                    logits.append(logit)
+            poses.append(pose)
+
+            if i ==0 and is_first:
+                hc = tgt
+            else:
+                hc = torch.cat([hc, tgt], dim=1)
+   
+        poses = torch.cat(poses, dim=1)
+        decisions = torch.cat(decisions, dim=1)
+        logits = torch.cat(logits, dim=1)
+        probs = torch.nn.functional.softmax(logits, dim=-1)
+
+        return poses, decisions, probs, hc
+
+class PositionalEncoding(nn.Module):
+    def __init__(self,
+                 emb_size: int,
+                 dropout: float,
+                 maxlen: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        den = torch.exp(- torch.arange(0, emb_size, 2)* math.log(10000) / emb_size)
+        pos = torch.arange(0, maxlen).reshape(maxlen, 1)
+        pos_embedding = torch.zeros((maxlen, emb_size))
+        pos_embedding[:, 0::2] = torch.sin(pos * den)
+        pos_embedding[:, 1::2] = torch.cos(pos * den)
+        pos_embedding = pos_embedding.unsqueeze(-2)
+
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('pos_embedding', pos_embedding)
+
+    def forward(self, token_embedding: torch.Tensor):
+        return self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
 
 def initialization(net):
     #Initilization

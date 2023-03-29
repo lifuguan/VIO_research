@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO
+from model import DeepVIO, DeepVIO2
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -56,6 +56,9 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
+parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
+parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
+parser.add_argument('--seq2seq', default=False, action='store_true', help='whether to use seq2seq')
 
 args = parser.parse_args()
 
@@ -187,11 +190,14 @@ def main():
     tester = KITTI_tester(args)
 
     # Model initialization
-    model = DeepVIO(args)
+    if args.seq2seq is True:
+        model = DeepVIO2(args)
+    else:
+        model = DeepVIO(args)
 
     # Continual training or not
     if args.pretrain is not None:
-        model.load_state_dict(torch.load(args.pretrain))
+        model.load_state_dict(torch.load(args.pretrain), strict=False)
         print('load model %s'%args.pretrain)
         logger.info('load model %s'%args.pretrain)
     else:
