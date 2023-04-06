@@ -12,7 +12,7 @@ import numpy as np
 import math
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--data_dir', type=str, default='./data', help='path to the dataset')
+parser.add_argument('--data_dir', type=str, default='../Visual-Selective-VIO/data', help='path to the dataset')
 parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
 parser.add_argument('--save_dir', type=str, default='./results', help='path to save the result')
 
@@ -32,7 +32,7 @@ parser.add_argument('--rnn_dropout_out', type=float, default=0.2, help='dropout 
 parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='dropout within LSTM')
 
 parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight decay for the optimizer')
-parser.add_argument('--batch_size', type=int, default=8, help='batch size')
+parser.add_argument('--batch_size', type=int, default=16, help='batch size')
 parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
 parser.add_argument('--workers', type=int, default=16, help='number of workers')
 parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
@@ -45,20 +45,20 @@ parser.add_argument('--eta', type=float, default=0.05, help='exponential decay f
 parser.add_argument('--temp_init', type=float, default=5, help='initial temperature for gumbel-softmax')
 parser.add_argument('--Lambda', type=float, default=3e-5, help='penalty factor for the visual encoder usage')
 
-parser.add_argument('--experiment_name', type=str, default='experiment', help='experiment name')
+parser.add_argument('--experiment_name', type=str, default='transformer_nopolicy', help='experiment name')
 parser.add_argument('--optimizer', type=str, default='Adam', help='type of optimizer [Adam, SGD]')
 
 # parser.add_argument('--pretrain_flownet',type=str, default=None, help='wehther to use the pre-trained flownet')
-parser.add_argument('--pretrain_flownet',type=str, default='./model_zoo/flownets_bn_EPE2.459.pth.tar', help='wehther to use the pre-trained flownet')
+parser.add_argument('--pretrain_flownet',type=str, default='../Visual-Selective-VIO/pretrain_models/flownets_bn_EPE2.459.pth.tar', help='wehther to use the pre-trained flownet')
 parser.add_argument('--pretrain', type=str, default=None, help='path to the pretrained model')
 parser.add_argument('--hflip', default=False, action='store_true', help='whether to use horizonal flipping as augmentation')
 parser.add_argument('--color', default=False, action='store_true', help='whether to use color augmentations')
 
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
-parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
+parser.add_argument('--transformer', default=True, action='store_true', help='whether to use transformer')
 parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
-parser.add_argument('--seq2seq', default=False, action='store_true', help='whether to use seq2seq')
+parser.add_argument('--seq2seq', default=True, action='store_true', help='whether to use seq2seq')
 
 args = parser.parse_args()
 
@@ -69,39 +69,33 @@ np.random.seed(args.seed)
 def update_status(ep, args, model):
     if ep < args.epochs_warmup:  # Warmup stage
         lr = args.lr_warmup
-        selection = 'random'
-        temp = args.temp_init
-        for param in model.module.Policy_net.parameters(): # Disable the policy network
-            param.requires_grad = False
+        selection = 'gumbel-softmax'
     elif ep >= args.epochs_warmup and ep < args.epochs_warmup + args.epochs_joint: # Joint training stage
         lr = args.lr_joint
         selection = 'gumbel-softmax'
-        temp = args.temp_init * math.exp(-args.eta * (ep-args.epochs_warmup))
-        for param in model.module.Policy_net.parameters(): # Enable the policy network
-            param.requires_grad = True
     elif ep >= args.epochs_warmup + args.epochs_joint: # Finetuning stage
         lr = args.lr_fine
         selection = 'gumbel-softmax'
-        temp = args.temp_init * math.exp(-args.eta * (ep-args.epochs_warmup))
-    return lr, selection, temp
+    return lr, selection
 
-def train(model, optimizer, train_loader, selection, temp, logger, ep, p=0.5, weighted=False):
+def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted=False):
     
     mse_losses = []
     penalties = []
     data_len = len(train_loader)
 
-    for i, (imgs, imus, gts, rot, weight) in enumerate(train_loader):
+    for i, (imgs, imus, gts, rot, weight) in enumerate(train_loader):#the given Numpy array is not writable
 
-        imgs = imgs.cuda().float()
-        imus = imus.cuda().float()
-        gts = gts.cuda().float() 
+        imgs = imgs.cuda().float() #[16, 11, 3, 256, 512]
+        imus = imus.cuda().float() #[16, 101, 6]
+        gts = gts.cuda().float() #[16, 10, 6]
         weight = weight.cuda().float()
 
         optimizer.zero_grad()
-                
-        poses, decisions, probs, _ = model(imgs, imus, is_first=True, hc=None, temp=temp, selection=selection, p=p) # imu: batch, num, 6
-        
+
+        poses = model(gts, imgs, imus, is_first=True, selection=selection, hc = None) # [10,16,6]
+        # poses = torch.transpose(poses, 1, 0)
+
         if not weighted:
             angle_loss = torch.nn.functional.mse_loss(poses[:,:,:3], gts[:, :, :3])
             translation_loss = torch.nn.functional.mse_loss(poses[:,:,3:], gts[:, :, 3:])
@@ -111,34 +105,32 @@ def train(model, optimizer, train_loader, selection, temp, logger, ep, p=0.5, we
             translation_loss = (weight.unsqueeze(-1).unsqueeze(-1) * (poses[:,:,3:] - gts[:, :, 3:]) ** 2).mean()
         
         pose_loss = 100 * angle_loss + translation_loss        
-        penalty = (decisions[:,:,0].float()).sum(-1).mean()
-        loss = pose_loss + args.Lambda * penalty 
+        loss = pose_loss
         
         loss.backward()
         optimizer.step()
         
         if i % args.print_frequency == 0: 
-            message = f'Epoch: {ep}, iters: {i}/{data_len}, pose loss: {pose_loss.item():.6f}, penalty: {penalty.item():.6f}, loss: {loss.item():.6f}'
+            message = f'Epoch: {ep}, iters: {i}/{data_len}, pose loss: {pose_loss.item():.6f}, loss: {loss.item():.6f}'
             print(message)
             logger.info(message)
 
         mse_losses.append(pose_loss.item())
-        penalties.append(penalty.item())
 
-    return np.mean(mse_losses), np.mean(penalties)
+    return np.mean(mse_losses)
 
 
 def main():
 
     # Create Dir
     experiment_dir = Path('./results')
-    experiment_dir.mkdir_p()
+    experiment_dir.mkdir() if not experiment_dir.exists() else 0
     file_dir = experiment_dir.joinpath('{}/'.format(args.experiment_name))
-    file_dir.mkdir_p()
+    file_dir.mkdir() if not file_dir.exists() else 0
     checkpoints_dir = file_dir.joinpath('checkpoints/')
-    checkpoints_dir.mkdir_p()
+    checkpoints_dir.mkdir() if not checkpoints_dir.exists() else 0
     log_dir = file_dir.joinpath('logs/')
-    log_dir.mkdir_p()
+    log_dir.mkdir() if not log_dir.exists() else 0
     
     # Create logs
     logger = logging.getLogger(args.experiment_name)
@@ -230,18 +222,18 @@ def main():
 
     for ep in range(init_epoch, args.epochs_warmup+args.epochs_joint+args.epochs_fine):
         
-        lr, selection, temp = update_status(ep, args, model)
+        lr, selection = update_status(ep, args, model)
         optimizer.param_groups[0]['lr'] = lr
-        message = f'Epoch: {ep}, lr: {lr}, selection: {selection}, temperaure: {temp:.5f}'
+        message = f'Epoch: {ep}, lr: {lr}, selection: {selection}'
         print(message)
         logger.info(message)
 
         model.train()
-        avg_pose_loss, avg_penalty_loss = train(model, optimizer, train_loader, selection, temp, logger, ep, p=0.5)
-        
+        avg_pose_loss = train(model, optimizer, train_loader, selection, logger, ep, p=0.5)
+
         # Save the model after training
         torch.save(model.module.state_dict(), f'{checkpoints_dir}/{ep:003}.pth')
-        message = f'Epoch {ep} training finished, pose loss: {avg_pose_loss:.6f}, penalty_loss: {avg_penalty_loss:.6f}, model saved'
+        message = f'Epoch {ep} training finished, pose loss: {avg_pose_loss:.6f}, model saved'
         print(message)
         logger.info(message)
         
@@ -257,13 +249,12 @@ def main():
             r_rel = np.mean([errors[i]['r_rel'] for i in range(len(errors))])
             t_rmse = np.mean([errors[i]['t_rmse'] for i in range(len(errors))])
             r_rmse = np.mean([errors[i]['r_rmse'] for i in range(len(errors))])
-            usage = np.mean([errors[i]['usage'] for i in range(len(errors))])
 
             if t_rel < best:
                 best = t_rel 
                 torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
         
-            message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, usage: {usage:.4f}, best t_rel: {best:.4f}'
+            message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, best t_rel: {best:.4f}'
             logger.info(message)
             print(message)
     
@@ -273,7 +264,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
