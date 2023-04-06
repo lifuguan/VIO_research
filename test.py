@@ -5,15 +5,15 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO
+from model import DeepVIO, DeepVIO2
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
 import math
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--data_dir', type=str, default='./data', help='path to the dataset')
-parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+parser.add_argument('--data_dir', type=str, default='../Visual-Selective-VIO/data', help='path to the dataset')
+parser.add_argument('--gpu_ids', type=str, default='1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
 parser.add_argument('--save_dir', type=str, default='./results', help='path to save the result')
 parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
 
@@ -33,8 +33,8 @@ parser.add_argument('--rnn_dropout_out', type=float, default=0.2, help='dropout 
 parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='dropout within LSTM')
 
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
-parser.add_argument('--experiment_name', type=str, default='test', help='experiment name')
-parser.add_argument('--model', type=str, default='./results/batch32/checkpoints/best_3.54.pth', help='path to the pretrained model')
+parser.add_argument('--experiment_name', type=str, default='test_transformer_nopolicy', help='experiment name')
+parser.add_argument('--model', type=str, default='./results/transformer_nopolicy/checkpoints/081.pth', help='path to the pretrained model')
 parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
 parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
 
@@ -68,7 +68,7 @@ def main():
     tester = KITTI_tester(args)
 
     # Model initialization
-    model = DeepVIO(args)
+    model = DeepVIO2(args)
 
     model.load_state_dict(torch.load(args.model))
     print('load model %s'%args.model)
@@ -84,8 +84,7 @@ def main():
     
     for i, seq in enumerate(args.val_seq):
         message = f"Seq: {seq}, t_rel: {tester.errors[i]['t_rel']:.4f}, r_rel: {tester.errors[i]['r_rel']:.4f}, "
-        message += f"t_rmse: {tester.errors[i]['t_rmse']:.4f}, r_rmse: {tester.errors[i]['r_rmse']:.4f}, "
-        message += f"usage: {tester.errors[i]['usage']:.4f}"
+        message += f"t_rmse: {tester.errors[i]['t_rmse']:.4f}, r_rmse: {tester.errors[i]['r_rmse']:.4f} "
         print(message)
     
     
