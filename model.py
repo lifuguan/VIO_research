@@ -306,30 +306,40 @@ class PoseTransformer(nn.Module):
         self.linear = nn.Linear(6, self.d_model)# tgt feature
         self.fuse = Fusion_module(opt)
 
-    def forward(self, fv, fi, src_mask, tgt_mask, tgt, hc=None):
+    def forward(self, fv, fi, src_mask, tgt_mask, tgt, hc=None, is_first=False):
         fused = self.fuse(fv, fi)
         fused = torch.transpose(fused, 1, 0)
         fused = self.positional_encoding(fused)
+        if tgt.dim() == 2:
+            tgt = tgt.unsqueeze(0)
         tgt = self.linear(tgt)
         tgt = self.positional_encoding(tgt)
         tgt = torch.transpose(tgt, 1, 0)    #[8,10,6]
-        # memory = self.transformer.encoder(fused, src_mask, None)
-        # out = self.transformer.decoder(tgt, memory, tgt_mask)
-        pose = self.generator(fused)
-        pose = torch.transpose(pose, 1, 0)
-        return pose
+        memory = self.transformer.encoder(fused, src_mask, None)#[10,16,768]
+        if is_first:
+            tgt
+        else:
+            tgt = torch.cat([hc, tgt], 0)
+
+        out = self.transformer.decoder(tgt, memory, tgt_mask)#[10,16,768]
+        pose = self.generator(out)
+        pose = pose.transpose(1,0)
+        return pose, out
 
 
 def generate_square_subsequent_mask(sz, device):
-    mask = (torch.triu(torch.ones((sz, sz), device=device)) == 1).transpose(0, 1)
-    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+    mask1 = (torch.triu(torch.ones((sz, sz), device=device)) == 1).transpose(0, 1)
+    mask1 = mask1.float().masked_fill(mask1 == 0, float('-inf')).masked_fill(mask1 == 1, float(0.0))
+    mask1 = mask1.transpose(1, 0)
+    mask2 = (torch.triu(torch.ones((sz, sz), device=device), 1) == 1).transpose(0, 1)
+    mask2 = mask2.float().masked_fill(mask2 == 0, float('-inf')).masked_fill(mask2 == 1, float(0.0))
+    mask = torch.cat([mask1, mask2], 1)
     return mask
 
-def create_mask(src_seq_len, tgt_seq_len, device):
+def create_mask(tgt_seq_len, device):
     tgt_mask = generate_square_subsequent_mask(tgt_seq_len, device=device)
-    src_mask = torch.zeros((src_seq_len, src_seq_len),device=device).type(torch.bool)
-
-    return src_mask, tgt_mask
+    tgt_mask.transpose(1,0)
+    return tgt_mask
 class DeepVIO2(nn.Module):
     def __init__(self, opt):
         super(DeepVIO2, self).__init__()
@@ -342,34 +352,23 @@ class DeepVIO2(nn.Module):
     def forward(self, tgt, img, imu, is_first=True, selection='gumbel-softmax', hc = None):
         fv, fi = self.Feature_net(img, imu)
         device = tgt.device
-        tgt_len = tgt.shape[1]
+        tgt_len = fv.shape[1]
         batch_size = fv.shape[0]
         seq_len = fv.shape[1]#[16,10,512]
-        src_mask, tgt_mask = create_mask(seq_len, tgt_len, device)
-
+        # src_mask, tgt_mask = create_mask(seq_len, tgt_len, device)
+        src_mask = torch.zeros((seq_len, seq_len),device=device).type(torch.bool)
         if hc is None:
-            hc = torch.zeros(batch_size, self.opt.v_f_len + self.opt.i_f_len).to(fv.device) 
-        
-        # if is_first:
-            # tgt_mask = 
-            pose = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc)
+            hc = torch.zeros(seq_len, batch_size, self.opt.v_f_len + self.opt.i_f_len).to(fv.device) 
+        if is_first:
+            tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
+            tgt_mask = (torch.triu(torch.ones((seq_len, seq_len), device=device)) == 1).transpose(0, 1)
+            tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
         else:
-            pose = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc)
-        
-        # for i in range(seq_len):
-        #     if i == 0 and is_first:
-        #         # The first relative pose is estimated by both images and imu by default
-        #         # pose = self.Pose_net(fv[:, i:i+1, :], fi[:, i:i+1, :], src_mask, tgt_mask, tgt)
-        #         pose = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt)
-        #     else:
-        #         if selection == 'gumbel-softmax':
-        #             # Otherwise, sample the decision from the policy network
-        #             # pose = self.Pose_net(fv[:, i:i+1, :], fi[:, i:i+1, :], src_mask, tgt_mask, tgt)
-        #             pose = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt)
-        #     poses.append(pose)
-
-        # poses = torch.cat(poses, dim=1)
-        return pose
+            tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
+        pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc, is_first)#hc.shape [16,768]
+        # else:
+            # pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc)
+        return pose, hc
 
 class PositionalEncoding(nn.Module):
     def __init__(self,

@@ -33,8 +33,8 @@ parser.add_argument('--rnn_dropout_out', type=float, default=0.2, help='dropout 
 parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='dropout within LSTM')
 
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
-parser.add_argument('--experiment_name', type=str, default='test_transformer_nopolicy', help='experiment name')
-parser.add_argument('--model', type=str, default='./results/transformer_nopolicy/checkpoints/081.pth', help='path to the pretrained model')
+parser.add_argument('--experiment_name', type=str, default='test_encoder_decoder', help='experiment name')
+parser.add_argument('--model', type=str, default='./results/full_transformer/checkpoints/045.pth', help='path to the pretrained model')
 parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
 parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
 
@@ -72,7 +72,7 @@ def main():
 
     model.load_state_dict(torch.load(args.model))
     print('load model %s'%args.model)
-        
+    
     # Feed model to GPU
     model.cuda(gpu_ids[0])
     model = torch.nn.DataParallel(model, device_ids = gpu_ids)
@@ -91,7 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-

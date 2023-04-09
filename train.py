@@ -34,7 +34,7 @@ parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='drop
 parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight decay for the optimizer')
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
 parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
-parser.add_argument('--workers', type=int, default=16, help='number of workers')
+parser.add_argument('--workers', type=int, default=4, help='number of workers')
 parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
 parser.add_argument('--epochs_joint', type=int, default=40, help='number of epochs for joint training')
 parser.add_argument('--epochs_fine', type=int, default=20, help='number of epochs for finetuning')
@@ -93,7 +93,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
 
         optimizer.zero_grad()
 
-        poses = model(gts, imgs, imus, is_first=True, selection=selection, hc = None) # [10,16,6]
+        poses, _ = model(gts, imgs, imus, is_first=True, selection=selection, hc = None) # [10,16,6]
         # poses = torch.transpose(poses, 1, 0)
 
         if not weighted:
