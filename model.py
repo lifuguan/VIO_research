@@ -316,10 +316,10 @@ class PoseTransformer(nn.Module):
         tgt = self.positional_encoding(tgt)
         tgt = torch.transpose(tgt, 1, 0)    #[8,10,6]
         memory = self.transformer.encoder(fused, src_mask, None)#[10,16,768]
-        if is_first:
-            tgt
-        else:
-            tgt = torch.cat([hc, tgt], 0)
+        # if is_first:
+        #     tgt
+        # else:
+        #     tgt = torch.cat([hc, tgt], 0)
 
         out = self.transformer.decoder(tgt, memory, tgt_mask)#[10,16,768]
         pose = self.generator(out)
@@ -359,12 +359,13 @@ class DeepVIO2(nn.Module):
         src_mask = torch.zeros((seq_len, seq_len),device=device).type(torch.bool)
         if hc is None:
             hc = torch.zeros(seq_len, batch_size, self.opt.v_f_len + self.opt.i_f_len).to(fv.device) 
-        if is_first:
-            tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
-            tgt_mask = (torch.triu(torch.ones((seq_len, seq_len), device=device)) == 1).transpose(0, 1)
-            tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
-        else:
-            tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
+        tgt_mask = (torch.triu(torch.ones((seq_len, seq_len), device=device)) == 1).transpose(0, 1)
+        tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
+        # if is_first:
+        #     tgt_mask = (torch.triu(torch.ones((seq_len, seq_len), device=device)) == 1).transpose(0, 1)
+        #     tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
+        # else:
+        #     tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
         pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc, is_first)#hc.shape [16,768]
         # else:
             # pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc)

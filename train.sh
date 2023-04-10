@@ -8,3 +8,8 @@ python train.py --gpu_ids 0,1,2,3 --batch_size 32 --workers 32 --experiment_name
 
 #----2023/4/8
 python train.py --gpu_ids 1 --experiment_name full_transformer --transformer --seq2seq --batch_size 16 --workers 4
+#接着080.pth继续train
+python train.py --gpu_ids 1 --data_dir ../Visual-Selective-VIO/data --experiment_name full_transformer --batch_size 16 --pretrain ./results/full_transformer/checkpoints/080.pth
+python test.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_name test_encoder_decoder --model ./results/full_transformer/checkpoints/045.pth
+
+
