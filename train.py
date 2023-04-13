@@ -9,7 +9,7 @@ from model import DeepVIO, DeepVIO2
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
-import math
+import wandb 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--data_dir', type=str, default='../Visual-Selective-VIO/data', help='path to the dataset')
@@ -62,6 +62,25 @@ parser.add_argument('--seq2seq', default=True, action='store_true', help='whethe
 
 args = parser.parse_args()
 
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="VIO Research",
+    name=args.experiment_name,
+    
+    # track hyperparameters and run metadata
+    config={
+    "optimizer": args.optimizer,
+    "lr_warmup": args.lr_warmup,
+    "batch_size": args.batch_size,
+    "seq_len": args.seq_len,
+    "epochs_warmup": args.epochs_warmup,
+    "epochs_joint": args.epochs_joint,
+    "epochs_fine": args.epochs_fine,
+    "seq2seq": args.seq2seq,
+    }
+)
+
 # Set the random seed
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -113,6 +132,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
         if i % args.print_frequency == 0: 
             message = f'Epoch: {ep}, iters: {i}/{data_len}, pose loss: {pose_loss.item():.6f}, loss: {loss.item():.6f}'
             print(message)
+            wandb.log({"Epoch": ep, "iters": i, "angle loss": angle_loss.item(), "translation loss": translation_loss.item(), "loss": loss.item()})
             logger.info(message)
 
         mse_losses.append(pose_loss.item())
@@ -255,10 +275,12 @@ def main():
                 torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
         
             message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, best t_rel: {best:.4f}'
+            wandb.log({"Epoch": ep, "t_rel": format(t_rel,'.4f'), "r_rel": format(r_rel,'.4f'), "t_rmse": format(t_rmse,'.4f'), "r_rmse": format(r_rmse,'.4f'), "best t_rel": format(best,'.4f')})
             logger.info(message)
             print(message)
     
     message = f'Training finished, best t_rel: {best:.4f}'
+    wandb.finish()
     logger.info(message)
     print(message)
 
