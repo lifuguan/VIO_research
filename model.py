@@ -316,12 +316,23 @@ class PoseTransformer(nn.Module):
         tgt = self.positional_encoding(tgt)
         tgt = torch.transpose(tgt, 1, 0)    #[8,10,6]
         memory = self.transformer.encoder(fused, src_mask, None)#[10,16,768]
-        # if is_first:
-        #     tgt
-        # else:
-        #     tgt = torch.cat([hc, tgt], 0)
-
-        out = self.transformer.decoder(tgt, memory, tgt_mask)#[10,16,768]
+        if is_first:
+            tgt
+        else:
+            tgt = torch.cat([hc, tgt], 0)
+        # out = self.transformer.decoder(tgt, memory, tgt_mask)#[10,16,768]
+        output = tgt
+        for layer in self.transformer.decoder.layers:
+            output = layer.norm1(output + layer._sa_block(output, tgt_mask, None))
+            if is_first:
+                out = output
+            else:
+                out = output[10:,:,:]
+            out = layer.norm2(out + layer._mha_block(out, memory, None, None))
+            out = layer.norm3(out + layer._ff_block(out))
+            if not is_first:
+                output = torch.cat([hc, out], 0)
+        #输出出来的out应该是[10,1,768]
         pose = self.generator(out)
         pose = pose.transpose(1,0)
         return pose, out
@@ -359,13 +370,16 @@ class DeepVIO2(nn.Module):
         src_mask = torch.zeros((seq_len, seq_len),device=device).type(torch.bool)
         if hc is None:
             hc = torch.zeros(seq_len, batch_size, self.opt.v_f_len + self.opt.i_f_len).to(fv.device) 
-        tgt_mask = (torch.triu(torch.ones((seq_len, seq_len), device=device)) == 1).transpose(0, 1)
-        tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
-        # if is_first:
-        #     tgt_mask = (torch.triu(torch.ones((seq_len, seq_len), device=device)) == 1).transpose(0, 1)
-        #     tgt_mask = tgt_mask.float().masked_fill(tgt_mask == 0, float('-inf')).masked_fill(tgt_mask == 1, float(0.0))
-        # else:
-        #     tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
+        if tgt.dim() == 3:
+            tgt = tgt.transpose(1,0)
+        if is_first:
+            length = tgt.shape[0]
+        else:
+            length = 2*tgt.shape[0]
+        if tgt.dim() == 3:
+            tgt = tgt.transpose(1,0)
+        # tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
+        tgt_mask = torch.zeros((length, length),device=device).type(torch.bool)
         pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc, is_first)#hc.shape [16,768]
         # else:
             # pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc)

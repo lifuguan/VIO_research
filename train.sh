@@ -12,4 +12,6 @@ python train.py --gpu_ids 1 --experiment_name full_transformer --transformer --s
 python train.py --gpu_ids 1 --data_dir ../Visual-Selective-VIO/data --experiment_name full_transformer --batch_size 16 --pretrain ./results/full_transformer/checkpoints/080.pth
 python test.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_name test_encoder_decoder --model ./results/full_transformer/checkpoints/045.pth
 
+#修改为2023/4/12开会时所说的加时序的结果，跑一下看看结果！！！！try_have_time_series  in test.py ; in train.py is_first is all true 
+python train.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_name try_have_time_series --batch_size 16 --transformer --seq2seq
 
