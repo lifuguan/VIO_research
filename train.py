@@ -238,6 +238,9 @@ def main():
     elif args.optimizer == 'Adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999), 
                                      eps=1e-08, weight_decay=args.weight_decay)
+    elif args.optimizer == 'AdamW':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, betas=(0.9, 0.999), 
+                                     eps=1e-8, weight_decay=args.weight_decay)
     
     best = 10000
 
