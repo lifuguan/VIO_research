@@ -65,6 +65,7 @@ args = parser.parse_args()
 
 wandb.init(
     # set the wandb project where this run will be logged
+    entity="vio-research",
     project="VIO Research",
     name=args.experiment_name,
     
