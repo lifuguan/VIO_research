@@ -317,17 +317,17 @@ class PoseTransformer(nn.Module):
         tgt = torch.transpose(tgt, 1, 0)    #[8,10,6]
         memory = self.transformer.encoder(fused, src_mask, None)#[10,16,768]
         if is_first:
-            tgt
+            output = tgt
         else:
-            tgt = torch.cat([hc, tgt], 0)
+            output = torch.cat([hc, tgt], 0)
         # out = self.transformer.decoder(tgt, memory, tgt_mask)#[10,16,768]
-        output = tgt
+
         for layer in self.transformer.decoder.layers:
-            output = layer.norm1(output + layer._sa_block(output, tgt_mask, None))
             if is_first:
-                out = output
+                out = layer._sa_block(output, tgt_mask, None)
             else:
-                out = output[10:,:,:]
+                out = layer._sa_block(output, tgt_mask, None)[10:, :,:]
+            out = layer.norm1(out + tgt)#保留tgt的做后续的cross，而不是out去做cross_attn
             out = layer.norm2(out + layer._mha_block(out, memory, None, None))
             out = layer.norm3(out + layer._ff_block(out))
             if not is_first:
