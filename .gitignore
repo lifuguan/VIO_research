@@ -3,3 +3,13 @@ results
 __pycache__
 data/poses
 data/sequences
+wandb
+environment.yml
+Untitled-1.py
+translation_transformer.ipynb
+validation.tar.gz
+de_core_news_sm-3.5.0.tar.gz
+en_core_web_sm-3.5.0.tar.gz
+training.tar.gz
+validation.tar copy.gz
+.gitignore
