@@ -256,7 +256,7 @@ def main():
         avg_pose_loss = train(model, optimizer, train_loader, selection, logger, ep, p=0.5)
 
         # Save the model after training
-        torch.save(model.module.state_dict(), f'{checkpoints_dir}/{ep:003}.pth')
+        torch.save(model.module.state_dict(), f'{checkpoints_dir}/training.pth')
         message = f'Epoch {ep} training finished, pose loss: {avg_pose_loss:.6f}, model saved'
         print(message)
         logger.info(message)

@@ -13,7 +13,7 @@ python train.py --gpu_ids 1 --data_dir ../Visual-Selective-VIO/data --experiment
 python test.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_name test_encoder_decoder --model ./results/full_transformer/checkpoints/045.pth
 
 #修改为2023/4/12开会时所说的加时序的结果，跑一下看看结果！！！！try_have_time_series  in test.py ; in train.py is_first is all true 
-python train.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_name try_have_time_series --batch_size 16 --transformer --seq2seq
+python train.py --gpu_ids 0,1 --data_dir ../Visual-Selective-VIO/data --experiment_name try_have_time_series --batch_size 16 --transformer --seq2seq
 
 #调参2023/4/14
 python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer AdamW --experiment_name adapt_para_optimizer_AdamW --batch_size 16 --transformer --seq2seq
