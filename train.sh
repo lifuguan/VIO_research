@@ -14,6 +14,12 @@ python test.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_
 
 # transformer no time series adapt parameters
 python train.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer AdamW --experiment_name adapt_para_optimizer_AdamW --batch_size 16 --transformer --seq2seq
+
+python train.py --gpu_ids 6,7 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name vanilla --batch_size 16 --transformer --seq2seq
+
+python train.py --gpu_ids 6,7 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name no_policy --batch_size 16 
+
+
 # waiting experiment
 python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_lr_fine_2e-6 --batch_size 16 --transformer --seq2seq --lr_fine 2e-6
 python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_lr_fine_5e-7 --batch_size 16 --transformer --seq2seq --lr_fine 5e-7
