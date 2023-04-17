@@ -15,14 +15,14 @@ python test.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --experiment_
 # transformer no time series adapt parameters
 python train.py --gpu_ids 0 --data_dir ../Visual-Selective-VIO/data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer AdamW --experiment_name adapt_para_optimizer_AdamW --batch_size 16 --transformer --seq2seq
 
-python train.py --gpu_ids 6,7 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name vanilla --batch_size 16 --transformer --seq2seq
+python train.py --gpu_ids 6,7 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name vanilla --batch_size 16 --transformer --seq2seq --pretrain results/vanilla/checkpoints/081.pth
 
-python train.py --gpu_ids 6,7 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name no_policy --batch_size 16 
+python train.py --gpu_ids 6,7 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name no_policy --batch_size 16 --pretrain results/no_policy/checkpoints/081.pth
 
 
 # waiting experiment
-python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_lr_fine_2e-6 --batch_size 16 --transformer --seq2seq --lr_fine 2e-6
-python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_lr_fine_5e-7 --batch_size 16 --transformer --seq2seq --lr_fine 5e-7
-python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_WD_1e-5 --batch_size 16 --transformer --seq2seq --weight_decay 1e-5
-python train.py --gpu_ids 0 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_WD_ --batch_size 16 --transformer --seq2seq --weight_decay 2.5e-6
+python train.py --gpu_ids 0,1 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_lr_fine_2e-6 --batch_size 16 --transformer --seq2seq --lr_fine 2e-6 --pretrain results/adapt_para_optimizer_Adam_lr_fine_2e-6/checkpoints/081.pth
+python train.py --gpu_ids 0,1 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_lr_fine_5e-7 --batch_size 16 --transformer --seq2seq --lr_fine 5e-7 --pretrain results/adapt_para_optimizer_Adam_lr_fine_5e-7/checkpoints/081.pth
+python train.py --gpu_ids 2,3 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_WD_1e-5 --batch_size 16 --transformer --seq2seq --weight_decay 1e-5  --pretrain results/adapt_para_optimizer_Adam_WD_1e-5/checkpoints/081.pth
+python train.py --gpu_ids 2,3 --data_dir ./data --pretrain_flownet ./model_zoo/flownets_bn_EPE2.459.pth.tar --optimizer Adam --experiment_name adapt_para_optimizer_Adam_WD_ --batch_size 16 --transformer --seq2seq --weight_decay 2.5e-6 --pretrain results/adapt_para_optimizer_Adam_WD_/checkpoints/081.pth
 
