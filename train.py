@@ -281,7 +281,7 @@ def main():
                 torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
         
             message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, best t_rel: {best:.4f}'
-            wandb.log({"Epoch": ep, "t_rel": format(t_rel,'.4f'), "r_rel": format(r_rel,'.4f'), "t_rmse": format(t_rmse,'.4f'), "r_rmse": format(r_rmse,'.4f'), "best t_rel": format(best,'.4f')})
+            wandb.log({"Epoch": ep, "t_rel": round(t_rel,4), "r_rel": round(r_rel,4), "t_rmse": round(t_rmse,4), "r_rmse": round(r_rmse,4), "best t_rel": round(best,4)})
             logger.info(message)
             print(message)
     
