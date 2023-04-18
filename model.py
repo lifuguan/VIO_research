@@ -327,6 +327,7 @@ class PoseTransformer(nn.Module):
                 out = layer._sa_block(output, tgt_mask, None)
             else:
                 out = layer._sa_block(output, tgt_mask, None)[10:, :,:]
+                tgt = layer._sa_block(tgt, None, None)
             out = layer.norm1(out + tgt)#保留tgt的做后续的cross，而不是out去做cross_attn
             out = layer.norm2(out + layer._mha_block(out, memory, None, None))
             out = layer.norm3(out + layer._ff_block(out))

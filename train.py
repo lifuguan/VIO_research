@@ -59,6 +59,7 @@ parser.add_argument('--weighted', default=False, action='store_true', help='whet
 parser.add_argument('--transformer', default=True, action='store_true', help='whether to use transformer')
 parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
 parser.add_argument('--seq2seq', default=True, action='store_true', help='whether to use seq2seq')
+parser.add_argument('--time_series', default=True, action='store_true', help='whether to use time_series')
 
 args = parser.parse_args()
 
@@ -72,13 +73,17 @@ wandb.init(
     # track hyperparameters and run metadata
     config={
     "optimizer": args.optimizer,
+    "weight_decay": args.weight_decay,
     "lr_warmup": args.lr_warmup,
+    "lr_joint": args.lr_joint,
+    "lr_fine": args.lr_fine,
     "batch_size": args.batch_size,
     "seq_len": args.seq_len,
     "epochs_warmup": args.epochs_warmup,
     "epochs_joint": args.epochs_joint,
     "epochs_fine": args.epochs_fine,
     "seq2seq": args.seq2seq,
+    "time_series": args.time_series,
     }
 )
 
@@ -104,6 +109,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
     penalties = []
     data_len = len(train_loader)
 
+    pre_tgt = None
     for i, (imgs, imus, gts, rot, weight) in enumerate(train_loader):#the given Numpy array is not writable
 
         imgs = imgs.cuda().float() #[16, 11, 3, 256, 512]
@@ -113,8 +119,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
 
         optimizer.zero_grad()
 
-        poses, _ = model(gts, imgs, imus, is_first=True, selection=selection, hc = None) # [10,16,6]
-        # poses = torch.transpose(poses, 1, 0)
+        poses, _ = model(gts, imgs, imus, is_first=True, selection=selection, hc = pre_tgt) # [10,16,6]
 
         if not weighted:
             angle_loss = torch.nn.functional.mse_loss(poses[:,:,:3], gts[:, :, :3])
@@ -256,7 +261,7 @@ def main():
         avg_pose_loss = train(model, optimizer, train_loader, selection, logger, ep, p=0.5)
 
         # Save the model after training
-        torch.save(model.module.state_dict(), f'{checkpoints_dir}/training.pth')
+        torch.save(model.module.state_dict(), f'{checkpoints_dir}/{ep:003}.pth')
         message = f'Epoch {ep} training finished, pose loss: {avg_pose_loss:.6f}, model saved'
         print(message)
         logger.info(message)
@@ -278,10 +283,25 @@ def main():
                 best = t_rel 
                 torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
         
-            message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, best t_rel: {best:.4f}'
-            wandb.log({"Epoch": ep, "t_rel": round(t_rel,4), "r_rel": round(r_rel,4), "t_rmse": round(t_rmse,4), "r_rmse": round(r_rmse,4), "best t_rel": round(best,4)})
+            message = "Epoch {} evaluation Seq. 05 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[0]['t_rel'], 4), round(errors[0]['r_rel'], 4), round(errors[0]['t_rmse'], 4), round(errors[0]['r_rmse'], 4))
             logger.info(message)
             print(message)
+            wandb.log({"5. t_rel": round(errors[0]['t_rel'], 4), "5. r_rel": round(errors[0]['r_rel'], 4), "5. t_rmse": round(errors[0]['t_rmse'], 4), "5. r_rmse": round(errors[0]['r_rmse'], 4)})
+
+            message = "Epoch {} evaluation Seq. 07 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[1]['t_rel'], 4), round(errors[1]['r_rel'], 4), round(errors[1]['t_rmse'], 4), round(errors[1]['r_rmse'], 4))
+            logger.info(message)
+            print(message)
+            wandb.log({"7. t_rel": round(errors[1]['t_rel'], 4), "7. r_rel": round(errors[1]['r_rel'], 4), "7. t_rmse": round(errors[1]['t_rmse'], 4), "7. r_rmse": round(errors[1]['r_rmse'], 4)})
+
+
+            message = "Epoch {} evaluation Seq. 10 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[2]['t_rel'], 4), round(errors[2]['r_rel'], 4), round(errors[2]['t_rmse'], 4), round(errors[2]['r_rmse'], 4))
+            logger.info(message)
+            print(message)
+            wandb.log({"10. t_rel": round(errors[2]['t_rel'], 4), "10. r_rel": round(errors[2]['r_rel'], 4), "10. t_rmse": round(errors[2]['t_rmse'], 4), "10. r_rmse": round(errors[2]['r_rmse'], 4)})
+
+            logger.info(message)
+            print(message)
+            wandb.log({"Epoch": ep, "t_rel": round(t_rel,4), "r_rel": round(r_rel,4), "t_rmse": round(t_rmse,4), "r_rmse": round(r_rmse,4), "best t_rel": round(best,4)})
     
     message = f'Training finished, best t_rel: {best:.4f}'
     wandb.finish()
