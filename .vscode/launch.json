@@ -53,7 +53,22 @@
                 "--gpu_ids","0",
                 "--batch_size","16",
                 "--data_dir","./data",
-                "--experiment_name","debug","--transformer", "--seq2seq"
+                "--experiment_name","debug","--model", "time_series"
+            ]
+        },
+        {
+            "name": "train:vanilla_transformer",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--gpu_ids","7", 
+                "--seq_len", "11",
+                "--batch_size","16",
+                "--data_dir","./data",
+                "--experiment_name","debug","--model", "vanilla_transformer"
             ]
         }
     ]

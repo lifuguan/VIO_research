@@ -360,3 +360,41 @@ def initialization(net):
         elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
             m.weight.data.fill_(1)
             m.bias.data.zero_()
+
+
+
+class DeepVIOVanillaTransformer(nn.Module):
+    def __init__(self, opt):
+        super(DeepVIOVanillaTransformer, self).__init__()
+
+        self.opt = opt
+        self.latent_dim = self.opt.v_f_len + self.opt.i_f_len
+        self.feature_extractor = VisualIMUEncoder(opt)
+        self.fuse_net = FusionModule(opt)
+
+        self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
+        self.temporal_transformer = TemporalTransformer(opt, batch_first=False)
+
+        self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
+
+        initialization(self)
+
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None):
+        fv, fi = self.feature_extractor(img, imu)
+        
+        device = fv.device
+        batch_size, seq_len = fv.shape[0], fv.shape[1] 
+
+        fused_feat = self.fuse_net(fv, fi)
+        fused_feat = fused_feat.transpose(1, 0)
+        target = torch.zeros((seq_len, batch_size, self.latent_dim), device=device)
+
+        pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
+        pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
+
+        out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = None)
+
+        # 输出出来的out应该是[10,1,768]
+        pose = self.generator(out)
+        pose = pose.transpose(1, 0)
+        return pose, history_out

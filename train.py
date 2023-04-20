@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2
+from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -57,9 +57,8 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
 parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
-parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
 parser.add_argument('--seq2seq', default=False, action='store_true', help='whether to use seq2seq')
-parser.add_argument('--time_series', default=False, action='store_true', help='whether to use time_series')
+parser.add_argument('--model', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
 
 args = parser.parse_args()
 
@@ -82,8 +81,7 @@ if args.experiment_name != 'debug':
         "epochs_warmup": args.epochs_warmup,
         "epochs_joint": args.epochs_joint,
         "epochs_fine": args.epochs_fine,
-        "seq2seq": args.seq2seq,
-        "time_series": args.time_series,
+        "model": args.model,
         }
     )
 
@@ -210,8 +208,10 @@ def main():
     tester = KITTI_tester(args)
 
     # Model initialization
-    if args.seq2seq is True:
+    if args.model == 'time_series':
         model = DeepVIO2(args)
+    elif args.model == 'vanilla_transformer':
+        model = DeepVIOVanillaTransformer(args)
     else:
         model = DeepVIO(args)
 
