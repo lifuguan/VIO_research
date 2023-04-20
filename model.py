@@ -5,7 +5,7 @@ from torch.nn.init import kaiming_normal_
 import numpy as np
 import torch.nn.functional as F
 import math
-from torch.nn import Transformer
+from transformer import TemporalTransformer
 
 def conv(batchNorm, in_planes, out_planes, kernel_size=3, stride=1, dropout=0):
     if batchNorm:
@@ -51,9 +51,9 @@ class Inertial_encoder(nn.Module):
         out = self.proj(x.view(x.shape[0], -1))                   # out: (N x seq_len, 256)
         return out.view(batch_size, seq_len, 256)
 
-class Encoder(nn.Module):
+class VisualIMUEncoder(nn.Module):
     def __init__(self, opt):
-        super(Encoder, self).__init__()
+        super(VisualIMUEncoder, self).__init__()
         # CNN
         self.opt = opt
         self.conv1 = conv(True, 6, 64, kernel_size=7, stride=2, dropout=0.2)
@@ -98,9 +98,9 @@ class Encoder(nn.Module):
 
 
 # The fusion module
-class Fusion_module(nn.Module):
+class FusionModule(nn.Module):
     def __init__(self, opt):
-        super(Fusion_module, self).__init__()
+        super(FusionModule, self).__init__()
         self.fuse_method = opt.fuse_method
         self.f_len = opt.i_f_len + opt.v_f_len
         if self.fuse_method == 'soft':
@@ -153,7 +153,7 @@ class Pose_RNN(nn.Module):
         self.transformer = transformer
 
 
-        self.fuse = Fusion_module(opt)
+        self.fuse = FusionModule(opt)
 
         # The output networks
         self.rnn_drop_out = nn.Dropout(opt.rnn_dropout_out)
@@ -187,7 +187,7 @@ class DeepVIO(nn.Module):
     def __init__(self, opt):
         super(DeepVIO, self).__init__()
 
-        self.Feature_net = Encoder(opt)
+        self.Feature_net = VisualIMUEncoder(opt)
         self.Pose_net = Pose_RNN(opt, opt.transformer)
         self.opt = opt
         self.transformer = opt.transformer
@@ -252,139 +252,63 @@ class DeepVIO(nn.Module):
         return poses, decisions, probs, hc
 
 
-# class PoseTransformer(nn.Module):
-#     def __init__(self, opt):
-#         super(PoseTransformer, self).__init__()
-
-#         # The main RNN network
-#         d_model = opt.v_f_len + opt.i_f_len
-#         self.positional_encoding = PositionalEncoding(emb_size=d_model, dropout=0.1)
-#         self.decode_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=8, dropout=0.1, batch_first=True)
-#         self.encode_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=8, dropout=0.1, batch_first=True)
-#         self.regressor = nn.Sequential(
-#             nn.Linear(d_model, 128),
-#             nn.LeakyReLU(0.1, inplace=True),
-#             nn.Linear(128, 6))
-
-#         self.fuse = Fusion_module(opt)
-
-#         # The output networks
-#         self.rnn_drop_out = nn.Dropout(opt.rnn_dropout_out)
-       
-
-#     def forward(self, fv, fv_alter, fi, dec, prev=None):
-#         # Select between fv and fv_alter
-#         v_in = fv * dec[:, :, :1] + fv_alter * dec[:, :, -1:] if fv_alter is not None else fv
-#         fused = self.fuse(v_in, fi)
-        
-#         if prev is None:
-#             out = self.encode_layer(fused)  
-#         else:
-#             prev = self.positional_encoding(prev)
-#             out = self.decode_layer(fused, prev)
-#         hc = out.clone()
-
-#         out = self.rnn_drop_out(out)
-#         pose = self.regressor(out)
-
-#         return pose, hc
-
-class PoseTransformer(nn.Module):
-    def __init__(self, opt):
-        super(PoseTransformer, self).__init__()
-
-        # The main RNN network
-        self.d_model = opt.v_f_len + opt.i_f_len
-        self.positional_encoding = PositionalEncoding(emb_size=self.d_model, dropout=0.1)
-        self.transformer = Transformer(d_model=self.d_model,
-                                       nhead=8,
-                                       num_encoder_layers=3,
-                                       num_decoder_layers=3,
-                                       dim_feedforward=512,
-                                       dropout=0.1)
-        self.generator = nn.Linear(self.d_model, 6)#这里是6维
-        self.linear = nn.Linear(6, self.d_model)# tgt feature
-        self.fuse = Fusion_module(opt)
-
-    def forward(self, fv, fi, src_mask, tgt_mask, tgt, hc=None, is_first=False):
-        fused = self.fuse(fv, fi)
-        fused = torch.transpose(fused, 1, 0)
-        fused = self.positional_encoding(fused)
-        if tgt.dim() == 2:
-            tgt = tgt.unsqueeze(0)
-        tgt = self.linear(tgt)
-        tgt = self.positional_encoding(tgt)
-        tgt = torch.transpose(tgt, 1, 0)    #[8,10,6]
-        memory = self.transformer.encoder(fused, src_mask, None)#[10,16,768]
-        if is_first:
-            output = tgt
-        else:
-            output = torch.cat([hc, tgt], 0)
-        # out = self.transformer.decoder(tgt, memory, tgt_mask)#[10,16,768]
-
-        for layer in self.transformer.decoder.layers:
-            if is_first:
-                out = layer._sa_block(output, tgt_mask, None)
-            else:
-                out = layer._sa_block(output, tgt_mask, None)[10:, :,:]
-                tgt = layer._sa_block(tgt, None, None)
-            out = layer.norm1(out + tgt)#保留tgt的做后续的cross，而不是out去做cross_attn
-            out = layer.norm2(out + layer._mha_block(out, memory, None, None))
-            out = layer.norm3(out + layer._ff_block(out))
-            if not is_first:
-                output = torch.cat([hc, out], 0)
-        #输出出来的out应该是[10,1,768]
-        pose = self.generator(out)
-        pose = pose.transpose(1,0)
-        return pose, out
-
-
-def generate_square_subsequent_mask(sz, device):
-    mask1 = (torch.triu(torch.ones((sz, sz), device=device)) == 1).transpose(0, 1)
-    mask1 = mask1.float().masked_fill(mask1 == 0, float('-inf')).masked_fill(mask1 == 1, float(0.0))
-    mask1 = mask1.transpose(1, 0)
-    mask2 = (torch.triu(torch.ones((sz, sz), device=device), 1) == 1).transpose(0, 1)
-    mask2 = mask2.float().masked_fill(mask2 == 0, float('-inf')).masked_fill(mask2 == 1, float(0.0))
-    mask = torch.cat([mask1, mask2], 1)
-    return mask
-
-def create_mask(tgt_seq_len, device):
-    tgt_mask = generate_square_subsequent_mask(tgt_seq_len, device=device)
-    tgt_mask.transpose(1,0)
-    return tgt_mask
 class DeepVIO2(nn.Module):
     def __init__(self, opt):
         super(DeepVIO2, self).__init__()
 
-        self.Feature_net = Encoder(opt)
-        self.Pose_net = PoseTransformer(opt)
         self.opt = opt
+        self.latent_dim = self.opt.v_f_len + self.opt.i_f_len
+        self.feature_extractor = VisualIMUEncoder(opt)
+        self.fuse_net = FusionModule(opt)
+        self.linear = nn.Linear(6, self.latent_dim)    # tgt feature
+
+        self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
+        self.temporal_transformer = TemporalTransformer(opt)
+
+        self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
+
         initialization(self)
 
-    def forward(self, tgt, img, imu, is_first=True, selection='gumbel-softmax', hc = None):
-        fv, fi = self.Feature_net(img, imu)
+    def forward(self, tgt, img, imu, is_training=True, selection='gumbel-softmax', history_out = None):
+        fv, fi = self.feature_extractor(img, imu)
         device = tgt.device
-        tgt_len = fv.shape[1]
-        batch_size = fv.shape[0]
-        seq_len = fv.shape[1]#[16,10,512]
-        # src_mask, tgt_mask = create_mask(seq_len, tgt_len, device)
-        src_mask = torch.zeros((seq_len, seq_len),device=device).type(torch.bool)
-        if hc is None:
-            hc = torch.zeros(seq_len, batch_size, self.opt.v_f_len + self.opt.i_f_len).to(fv.device) 
-        if tgt.dim() == 3:
-            tgt = tgt.transpose(1,0)
-        if is_first:
-            length = tgt.shape[0]
+
+        if is_training:
+            fused_feat = self.fuse_net(fv, fi)
+            target = self.linear(torch.ones_like(tgt, device=device))
+
+            pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
+            pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
+
+            pos_fused_feat0, pos_fused_feat1 = pos_fused_feat.chunk(chunks=2, dim=0)
+            pos_target0, pos_target1 = pos_target.chunk(chunks=2, dim=0)
+
+            out0 = self.temporal_transformer(pos_fused_feat0, pos_target0, history_out = None)
+            out1 = self.temporal_transformer(pos_fused_feat1, pos_target1, history_out = out0)
+            out = torch.concat([out0, out1], dim=0)
         else:
-            length = 2*tgt.shape[0]
-        if tgt.dim() == 3:
-            tgt = tgt.transpose(1,0)
-        # tgt_mask = generate_square_subsequent_mask(seq_len, device=device)
-        tgt_mask = torch.zeros((length, length),device=device).type(torch.bool)
-        pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc, is_first)#hc.shape [16,768]
-        # else:
-            # pose, hc = self.Pose_net(fv, fi, src_mask, tgt_mask, tgt, hc)
-        return pose, hc
+            fused_feat = self.fuse_net(fv, fi)
+            target = self.linear(torch.ones_like(tgt, device=device))
+
+            if history_out is not None:
+                pad_fused_feat = torch.cat([torch.ones_like(fused_feat, device=device), fused_feat], dim=0)
+                pad_target = torch.cat([torch.ones_like(target, device=device), target], dim=0)
+
+                pos_fused_feat_ = self.positional_encoding(pad_fused_feat) # seq = 20, [0:10] = zero_pad, [10:20] = current
+                pos_target_ = self.positional_encoding(pad_target)         # seq = 20, [0:10] = zero_pad, [10:20] = current
+
+                _, pos_fused_feat = pos_fused_feat_.chunk(chunks=2, dim=0)
+                _, pos_target = pos_target_.chunk(chunks=2, dim=0)
+            else:    # 第一次在inference中进行迭代，没有history_out
+                pos_fused_feat = self.positional_encoding(fused_feat) # seq = 10, [0:10] = current
+                pos_target = self.positional_encoding(target)         # seq = 10, [0:10] = current
+
+            assert history_out is not None, "`history_out` is None during inference!"
+            out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = history_out)
+
+        # 输出出来的out应该是[10,1,768]
+        pose = self.generator(out)
+        return pose, history_out
 
 class PositionalEncoding(nn.Module):
     def __init__(self,
@@ -403,7 +327,10 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pos_embedding', pos_embedding)
 
     def forward(self, token_embedding: torch.Tensor):
-        return self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
+        # batch在第二位，必须transpose，否则结果参考ry_have_time_series_pe_modified
+        token_embedding = token_embedding.transpose(1, 0)  
+        out = self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
+        return out.transpose(1, 0)
 
 def initialization(net):
     #Initilization

@@ -72,7 +72,7 @@ class KITTI_tester():
         self.args = args
     
     def test_one_path(self, net, df, selection, num_gpu=1):
-        hc = None
+        history_out = None
         pose_list, decision_list, probs_list= [], [], []
         for i, (image_seq, imu_seq, gt_seq) in tqdm(enumerate(df), total=len(df), smoothing=0.9):  
             x_in = image_seq.unsqueeze(0).repeat(num_gpu,1,1,1,1).cuda()
@@ -80,7 +80,7 @@ class KITTI_tester():
             gt_seq = gt_seq.astype(np.float32)
             gt_seq = torch.from_numpy(gt_seq).cuda()
             with torch.no_grad():#给返回hc，这样就参与进来了
-                pose, hc = net(gt_seq, x_in, i_in, is_first=(i==0), hc=hc, selection=selection)
+                pose, history_out = net(gt_seq, x_in, i_in, is_training=False, history_out=history_out, selection=selection)
             pose_list.append(pose[0,:,:].detach().cpu().numpy())
         pose_est = np.vstack(pose_list)      
         return pose_est

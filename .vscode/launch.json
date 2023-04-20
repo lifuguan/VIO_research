@@ -37,9 +37,9 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","./results/full_transformer/checkpoints/045.pth",
-                "--data_dir","../Visual-Selective-VIO/data",
-                "--experiment_name","test_encoder_decoder"
+                "--model","results/vanilla/checkpoints/best_4.69.pth",
+                "--data_dir","./data",
+                "--experiment_name","debug"
             ]
         },
         {
@@ -52,8 +52,8 @@
             "args": [
                 "--gpu_ids","0",
                 "--batch_size","16",
-                "--data_dir","../Visual-Selective-VIO/data",
-                "--experiment_name","train_deb"
+                "--data_dir","./data",
+                "--experiment_name","debug","--transformer", "--seq2seq"
             ]
         }
     ]

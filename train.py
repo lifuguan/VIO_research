@@ -33,7 +33,7 @@ parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='drop
 
 parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight decay for the optimizer')
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
-parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
+parser.add_argument('--seq_len', type=int, default=21, help='sequence length for LSTM')
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
 parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
 parser.add_argument('--epochs_joint', type=int, default=40, help='number of epochs for joint training')
@@ -63,29 +63,29 @@ parser.add_argument('--time_series', default=True, action='store_true', help='wh
 
 args = parser.parse_args()
 
-
-wandb.init(
-    # set the wandb project where this run will be logged
-    entity="vio-research",
-    project="VIO Research",
-    name=args.experiment_name,
-    
-    # track hyperparameters and run metadata
-    config={
-    "optimizer": args.optimizer,
-    "weight_decay": args.weight_decay,
-    "lr_warmup": args.lr_warmup,
-    "lr_joint": args.lr_joint,
-    "lr_fine": args.lr_fine,
-    "batch_size": args.batch_size,
-    "seq_len": args.seq_len,
-    "epochs_warmup": args.epochs_warmup,
-    "epochs_joint": args.epochs_joint,
-    "epochs_fine": args.epochs_fine,
-    "seq2seq": args.seq2seq,
-    "time_series": args.time_series,
-    }
-)
+if args.experiment_name != 'debug':
+    wandb.init(
+        # set the wandb project where this run will be logged
+        entity="vio-research",
+        project="VIO Research",
+        name=args.experiment_name,
+        
+        # track hyperparameters and run metadata
+        config={
+        "optimizer": args.optimizer,
+        "weight_decay": args.weight_decay,
+        "lr_warmup": args.lr_warmup,
+        "lr_joint": args.lr_joint,
+        "lr_fine": args.lr_fine,
+        "batch_size": args.batch_size,
+        "seq_len": args.seq_len,
+        "epochs_warmup": args.epochs_warmup,
+        "epochs_joint": args.epochs_joint,
+        "epochs_fine": args.epochs_fine,
+        "seq2seq": args.seq2seq,
+        "time_series": args.time_series,
+        }
+    )
 
 # Set the random seed
 torch.manual_seed(args.seed)
@@ -119,7 +119,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
 
         optimizer.zero_grad()
 
-        poses, _ = model(gts, imgs, imus, is_first=True, selection=selection, hc = pre_tgt) # [10,16,6]
+        poses, _ = model(gts, imgs, imus, is_training=True, selection=selection, history_out = pre_tgt) # [10,16,6]
 
         if not weighted:
             angle_loss = torch.nn.functional.mse_loss(poses[:,:,:3], gts[:, :, :3])
@@ -138,7 +138,8 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
         if i % args.print_frequency == 0: 
             message = f'Epoch: {ep}, iters: {i}/{data_len}, pose loss: {pose_loss.item():.6f}, loss: {loss.item():.6f}'
             print(message)
-            wandb.log({"Epoch": ep, "iters": i, "angle loss": angle_loss.item(), "translation loss": translation_loss.item(), "loss": loss.item()})
+            if args.experiment_name != 'debug':
+                wandb.log({"Epoch": ep, "iters": i, "angle loss": angle_loss.item(), "translation loss": translation_loss.item(), "loss": loss.item()})
             logger.info(message)
 
         mse_losses.append(pose_loss.item())
@@ -225,10 +226,10 @@ def main():
     # Use the pre-trained flownet or not
     if args.pretrain_flownet and args.pretrain is None:
         pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
-        model_dict = model.Feature_net.state_dict()
+        model_dict = model.feature_extractor.state_dict()
         update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
         model_dict.update(update_dict)
-        model.Feature_net.load_state_dict(model_dict)
+        model.feature_extractor.load_state_dict(model_dict)
 
     # Feed model to GPU
     model.cuda(gpu_ids[0])
@@ -284,26 +285,30 @@ def main():
             if t_rel < best:
                 best = t_rel 
                 torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
-        
+
             message = "Epoch {} evaluation Seq. 05 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[0]['t_rel'], 4), round(errors[0]['r_rel'], 4), round(errors[0]['t_rmse'], 4), round(errors[0]['r_rmse'], 4))
             logger.info(message)
             print(message)
-            wandb.log({"5. t_rel": round(errors[0]['t_rel'], 4), "5. r_rel": round(errors[0]['r_rel'], 4), "5. t_rmse": round(errors[0]['t_rmse'], 4), "5. r_rmse": round(errors[0]['r_rmse'], 4)})
+            if args.experiment_name != 'debug':
+                wandb.log({"5. t_rel": round(errors[0]['t_rel'], 4), "5. r_rel": round(errors[0]['r_rel'], 4), "5. t_rmse": round(errors[0]['t_rmse'], 4), "5. r_rmse": round(errors[0]['r_rmse'], 4)})
 
             message = "Epoch {} evaluation Seq. 07 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[1]['t_rel'], 4), round(errors[1]['r_rel'], 4), round(errors[1]['t_rmse'], 4), round(errors[1]['r_rmse'], 4))
             logger.info(message)
             print(message)
-            wandb.log({"7. t_rel": round(errors[1]['t_rel'], 4), "7. r_rel": round(errors[1]['r_rel'], 4), "7. t_rmse": round(errors[1]['t_rmse'], 4), "7. r_rmse": round(errors[1]['r_rmse'], 4)})
+            if args.experiment_name != 'debug':
+                wandb.log({"7. t_rel": round(errors[1]['t_rel'], 4), "7. r_rel": round(errors[1]['r_rel'], 4), "7. t_rmse": round(errors[1]['t_rmse'], 4), "7. r_rmse": round(errors[1]['r_rmse'], 4)})
 
 
             message = "Epoch {} evaluation Seq. 10 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[2]['t_rel'], 4), round(errors[2]['r_rel'], 4), round(errors[2]['t_rmse'], 4), round(errors[2]['r_rmse'], 4))
             logger.info(message)
             print(message)
-            wandb.log({"10. t_rel": round(errors[2]['t_rel'], 4), "10. r_rel": round(errors[2]['r_rel'], 4), "10. t_rmse": round(errors[2]['t_rmse'], 4), "10. r_rmse": round(errors[2]['r_rmse'], 4)})
+            if args.experiment_name != 'debug':
+                wandb.log({"10. t_rel": round(errors[2]['t_rel'], 4), "10. r_rel": round(errors[2]['r_rel'], 4), "10. t_rmse": round(errors[2]['t_rmse'], 4), "10. r_rmse": round(errors[2]['r_rmse'], 4)})
 
             logger.info(message)
             print(message)
-            wandb.log({"Epoch": ep, "t_rel": round(t_rel,4), "r_rel": round(r_rel,4), "t_rmse": round(t_rmse,4), "r_rmse": round(r_rmse,4), "best t_rel": round(best,4)})
+            if args.experiment_name != 'debug':
+                wandb.log({"Epoch": ep, "t_rel": round(t_rel,4), "r_rel": round(r_rel,4), "t_rmse": round(t_rmse,4), "r_rmse": round(r_rmse,4), "best t_rel": round(best,4)})
     
     message = f'Training finished, best t_rel: {best:.4f}'
     wandb.finish()
