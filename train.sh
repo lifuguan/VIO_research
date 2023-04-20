@@ -7,10 +7,10 @@ python train.py --gpu_ids 4,5 --batch_size 32 --workers 32 --experiment_name den
 python train.py --gpu_ids 0,1,2,3 --batch_size 32 --workers 32 --experiment_name seq32 --transformer --seq2seq
 
 #----2023/4/8
-python train.py --gpu_ids 1 --experiment_name try_have_time_series4 --transformer --seq2seq --batch_size 16 --workers 48 --data_dir ./data
+python train.py --gpu_ids 2 --experiment_name try_have_time_series4 --transformer --seq2seq --batch_size 16 --workers 48 --data_dir ./data --pretrain results/try_have_time_series4/checkpoints/081.pth
 #接着080.pth继续train
 python train.py --gpu_ids 1 --data_dir ./data --experiment_name full_transformer --batch_size 16 --pretrain ./results/full_transformer/checkpoints/080.pth
-python test.py --gpu_ids 0 --data_dir ./data --experiment_name debug --transformer --seq2seq --model results/vanilla/checkpoints/best_4.69.pth
+python test.py --gpu_ids 2 --data_dir ./data --experiment_name debug --transformer --seq2seq --model results/try_have_time_series4/checkpoints/065.pth
 
 #修改为2023/4/12开会时所说的加时序的结果，跑一下看看结果！！！！try_have_time_series  in test.py ; in train.py is_first is all true 
 python train.py --gpu_ids 4,5 --data_dir ./data --experiment_name try_have_time_series --batch_size 16 --transformer --seq2seq --pretrain results/try_have_time_series/checkpoints/081.pth

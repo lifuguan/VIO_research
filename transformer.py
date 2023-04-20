@@ -15,7 +15,7 @@ from torch.nn.modules.transformer import TransformerEncoder, TransformerEncoderL
 from torch.nn.modules.transformer import TransformerDecoder, TransformerDecoderLayer
 
 class TemporalTransformer(Module):
-    def __init__(self, opt) -> None:
+    def __init__(self, opt, batch_first: bool = False) -> None:
         super(TemporalTransformer, self).__init__()
         nhead: int = 8
         num_encoder_layers: int = 6
@@ -24,8 +24,7 @@ class TemporalTransformer(Module):
         dropout: float = 0.1
         activation: Union[str, Callable[[Tensor], Tensor]] = F.relu
         layer_norm_eps: float = 1e-5
-        batch_first: bool = True
-        norm_first: bool = False,
+        norm_first: bool = False
         device=None
         dtype=None
         d_model = opt.v_f_len + opt.i_f_len
@@ -106,7 +105,7 @@ class TemporalTransformerDecoderLayer(TransformerDecoderLayer):
 
             x = x + self._ff_block(self.norm3(x))
         else:
-            x = self.norm1(x + self._sa_block(x))            
+            x = self.norm1(x + self._sa_block(x, None, None))            
             if history_out is None:  # 如果history_out不为None，利用额外的mha进行cross attention
                 x = self.norm2(x + self._mha_block(x, memory, None, None))
             else:

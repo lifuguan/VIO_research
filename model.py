@@ -262,21 +262,28 @@ class DeepVIO2(nn.Module):
         self.fuse_net = FusionModule(opt)
         self.linear = nn.Linear(6, self.latent_dim)    # tgt feature
 
+        self.query_emb = nn.Embedding(20, self.latent_dim)  # 20 和seq_len相关
+
         self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
-        self.temporal_transformer = TemporalTransformer(opt)
+        self.temporal_transformer = TemporalTransformer(opt, batch_first=False)
 
         self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
 
         initialization(self)
 
-    def forward(self, tgt, img, imu, is_training=True, selection='gumbel-softmax', history_out = None):
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None):
         fv, fi = self.feature_extractor(img, imu)
-        device = tgt.device
+        
+        device = fv.device
+        batch_size, seq_len = fv.shape[0], fv.shape[1] 
+
+        fused_feat = self.fuse_net(fv, fi)
+        fused_feat = fused_feat.transpose(1, 0)
+        # query_emb = self.query_emb.weight.unsqueeze(1).repeat(1, batch_size, 1)
+        # target = torch.zeros_like(query_emb)
+        target = torch.zeros((seq_len, batch_size, self.latent_dim), device=device)
 
         if is_training:
-            fused_feat = self.fuse_net(fv, fi)
-            target = self.linear(torch.ones_like(tgt, device=device))
-
             pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
             pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
 
@@ -286,28 +293,29 @@ class DeepVIO2(nn.Module):
             out0 = self.temporal_transformer(pos_fused_feat0, pos_target0, history_out = None)
             out1 = self.temporal_transformer(pos_fused_feat1, pos_target1, history_out = out0)
             out = torch.concat([out0, out1], dim=0)
+
         else:
-            fused_feat = self.fuse_net(fv, fi)
-            target = self.linear(torch.ones_like(tgt, device=device))
-
-            if history_out is not None:
-                pad_fused_feat = torch.cat([torch.ones_like(fused_feat, device=device), fused_feat], dim=0)
-                pad_target = torch.cat([torch.ones_like(target, device=device), target], dim=0)
-
-                pos_fused_feat_ = self.positional_encoding(pad_fused_feat) # seq = 20, [0:10] = zero_pad, [10:20] = current
-                pos_target_ = self.positional_encoding(pad_target)         # seq = 20, [0:10] = zero_pad, [10:20] = current
-
-                _, pos_fused_feat = pos_fused_feat_.chunk(chunks=2, dim=0)
-                _, pos_target = pos_target_.chunk(chunks=2, dim=0)
-            else:    # 第一次在inference中进行迭代，没有history_out
-                pos_fused_feat = self.positional_encoding(fused_feat) # seq = 10, [0:10] = current
-                pos_target = self.positional_encoding(target)         # seq = 10, [0:10] = current
-
-            # assert history_out is not None, "`history_out` is None during inference!"
-            out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = history_out)
+            _, target = target.chunk(chunks=2, dim=0)
+            pad_fused_feat = torch.cat([torch.zeros_like(fused_feat, device=device), fused_feat], dim=0)
+            pad_target = torch.cat([torch.zeros_like(target, device=device), target], dim=0)
+            
+            pos_fused_feat_ = self.positional_encoding(pad_fused_feat) # seq = 20, [0:10] = zero_pad, [10:20] = current
+            pos_target_ = self.positional_encoding(pad_target)         # seq = 20, [0:10] = zero_pad, [10:20] = current
+            
+            _, pos_fused_feat = pos_fused_feat_.chunk(chunks=2, dim=0)
+            _, pos_target = pos_target_.chunk(chunks=2, dim=0)
+            
+            if history_out is not None:   # 第一次在inference中进行迭代，没有history_out
+                pad_his_out = torch.cat([history_out, torch.zeros_like(history_out, device=device)], dim=0)
+                pos_his_out_ = self.positional_encoding(pad_his_out)       # seq = 20, [0:10] = zero_pad, [10:20] = current
+                pos_his_out, _ = pos_his_out_.chunk(chunks=2, dim=0)
+                out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = pos_his_out)
+            else:
+                out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = history_out)
 
         # 输出出来的out应该是[10,1,768]
         pose = self.generator(out)
+        pose = pose.transpose(1, 0)
         return pose, history_out
 
 class PositionalEncoding(nn.Module):
@@ -327,10 +335,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pos_embedding', pos_embedding)
 
     def forward(self, token_embedding: torch.Tensor):
-        # batch在第二位，必须transpose，否则结果参考ry_have_time_series_pe_modified
-        token_embedding = token_embedding.transpose(1, 0)  
-        out = self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
-        return out.transpose(1, 0)
+        return self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
 
 def initialization(net):
     #Initilization

@@ -56,10 +56,10 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
-parser.add_argument('--transformer', default=True, action='store_true', help='whether to use transformer')
+parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
 parser.add_argument('--dense_connect', default=False, action='store_true', help='whether to use dense_connect')
-parser.add_argument('--seq2seq', default=True, action='store_true', help='whether to use seq2seq')
-parser.add_argument('--time_series', default=True, action='store_true', help='whether to use time_series')
+parser.add_argument('--seq2seq', default=False, action='store_true', help='whether to use seq2seq')
+parser.add_argument('--time_series', default=False, action='store_true', help='whether to use time_series')
 
 args = parser.parse_args()
 
@@ -119,7 +119,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
 
         optimizer.zero_grad()
 
-        poses, _ = model(gts, imgs, imus, is_training=True, selection=selection, history_out = pre_tgt) # [10,16,6]
+        poses, _ = model(imgs, imus, is_training=True, selection=selection, history_out = pre_tgt) # [10,16,6]
 
         if not weighted:
             angle_loss = torch.nn.functional.mse_loss(poses[:,:,:3], gts[:, :, :3])
@@ -136,7 +136,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
         optimizer.step()
         
         if i % args.print_frequency == 0: 
-            message = f'Epoch: {ep}, iters: {i}/{data_len}, pose loss: {pose_loss.item():.6f}, loss: {loss.item():.6f}'
+            message = f'Epoch: {ep}, iters: {i}/{data_len}, angle loss: {angle_loss.item():.6f}, translation loss: {pose_loss.item():.6f}, loss: {loss.item():.6f}'
             print(message)
             if args.experiment_name != 'debug':
                 wandb.log({"Epoch": ep, "iters": i, "angle loss": angle_loss.item(), "translation loss": translation_loss.item(), "loss": loss.item()})
@@ -206,6 +206,7 @@ def main():
         torch.cuda.set_device(gpu_ids[0])
     
     # Initialize the tester
+    args.seq_len = 11
     tester = KITTI_tester(args)
 
     # Model initialization
@@ -269,7 +270,7 @@ def main():
         print(message)
         logger.info(message)
         
-        if ep > args.epochs_warmup+args.epochs_joint:
+        if ep > args.epochs_warmup+args.epochs_joint or (ep > args.epochs_warmup and ep % 2 == 0):
             # Evaluate the model
             print('Evaluating the model')
             logger.info('Evaluating the model')
