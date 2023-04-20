@@ -303,7 +303,7 @@ class DeepVIO2(nn.Module):
                 pos_fused_feat = self.positional_encoding(fused_feat) # seq = 10, [0:10] = current
                 pos_target = self.positional_encoding(target)         # seq = 10, [0:10] = current
 
-            assert history_out is not None, "`history_out` is None during inference!"
+            # assert history_out is not None, "`history_out` is None during inference!"
             out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = history_out)
 
         # 输出出来的out应该是[10,1,768]

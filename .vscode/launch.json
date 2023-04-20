@@ -37,9 +37,9 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","results/vanilla/checkpoints/best_4.69.pth",
+                "--model","results/try_have_time_series4/checkpoints/065.pth",
                 "--data_dir","./data",
-                "--experiment_name","debug"
+                "--experiment_name","debug", "--transformer", "--seq2seq"
             ]
         },
         {

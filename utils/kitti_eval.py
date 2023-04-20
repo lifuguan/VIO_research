@@ -78,7 +78,7 @@ class KITTI_tester():
             x_in = image_seq.unsqueeze(0).repeat(num_gpu,1,1,1,1).cuda()
             i_in = imu_seq.unsqueeze(0).repeat(num_gpu,1,1).cuda()
             gt_seq = gt_seq.astype(np.float32)
-            gt_seq = torch.from_numpy(gt_seq).cuda()
+            gt_seq = torch.from_numpy(gt_seq).unsqueeze(0).cuda()
             with torch.no_grad():#给返回hc，这样就参与进来了
                 pose, history_out = net(gt_seq, x_in, i_in, is_training=False, history_out=history_out, selection=selection)
             pose_list.append(pose[0,:,:].detach().cpu().numpy())
