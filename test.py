@@ -32,7 +32,7 @@ parser.add_argument('--rnn_hidden_size', type=int, default=1024, help='size of t
 parser.add_argument('--rnn_dropout_out', type=float, default=0.2, help='dropout for the LSTM output layer')
 parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='dropout within LSTM')
 
-parser.add_argument('--workers', type=int, default=8, help='number of workers')
+parser.add_argument('--workers', type=int, default=3, help='number of workers')
 parser.add_argument('--experiment_name', type=str, default='test_encoder_decoder', help='experiment name')
 parser.add_argument('--model', type=str, default='./results/full_transformer/checkpoints/045.pth', help='path to the pretrained model')
 
@@ -77,7 +77,7 @@ def main():
         model = DeepVIOVanillaTransformer(args)
     elif args.model_type == 'old_transformer':
         model = DeepVIOOldTransformer(args)
-    else:
+    elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
 
     model.load_state_dict(torch.load(args.model), strict=False)

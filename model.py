@@ -125,132 +125,73 @@ class FusionModule(nn.Module):
             return feat_cat * mask[:, :, :, 0]
 
 
-# The pose estimation network
+# The pose estimation network# The pose estimation network
 class Pose_RNN(nn.Module):
-    def __init__(self, opt, transformer = False):
+    def __init__(self, opt):
         super(Pose_RNN, self).__init__()
 
         # The main RNN network
         f_len = opt.v_f_len + opt.i_f_len
-        if transformer == False:
-            self.rnn = nn.LSTM(
-                input_size=f_len,
-                hidden_size=opt.rnn_hidden_size,
-                num_layers=2,
-                dropout=opt.rnn_dropout_between,
-                batch_first=True)
-            self.regressor = nn.Sequential(
-                nn.Linear(opt.rnn_hidden_size, 128),
-                nn.LeakyReLU(0.1, inplace=True),
-                nn.Linear(128, 6))
-        elif transformer == True:
-            self.decode_layer = nn.TransformerDecoderLayer(d_model=f_len, nhead=8, dropout=0.1, batch_first=True)
-            self.encode_layer = nn.TransformerEncoderLayer(d_model=f_len, nhead=8, dropout=0.1, batch_first=True)
-            self.regressor = nn.Sequential(
-                nn.Linear(f_len, 128),
-                nn.LeakyReLU(0.1, inplace=True),
-                nn.Linear(128, 6))
-        self.transformer = transformer
-
+        self.rnn = nn.LSTM(
+            input_size=f_len,
+            hidden_size=opt.rnn_hidden_size,
+            num_layers=2,
+            dropout=opt.rnn_dropout_between,
+            batch_first=True)
 
         self.fuse = FusionModule(opt)
 
         # The output networks
         self.rnn_drop_out = nn.Dropout(opt.rnn_dropout_out)
-       
+        self.regressor = nn.Sequential(
+            nn.Linear(opt.rnn_hidden_size, 128),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Linear(128, 6))
 
     def forward(self, fv, fv_alter, fi, dec, prev=None):
-        if prev is not None and self.transformer is False:
+        if prev is not None:
             prev = (prev[0].transpose(1, 0).contiguous(), prev[1].transpose(1, 0).contiguous())
         
         # Select between fv and fv_alter
         v_in = fv * dec[:, :, :1] + fv_alter * dec[:, :, -1:] if fv_alter is not None else fv
         fused = self.fuse(v_in, fi)
         
-        if self.transformer == False:
-            out, hc = self.rnn(fused) if prev is None else self.rnn(fused, prev) # hc = (hn, cn)
-        elif self.transformer == True:
-            out = self.encode_layer(fused) if prev is None else self.decode_layer(fused, prev)
-            hc = out.clone()
-
+        out, hc = self.rnn(fused) if prev is None else self.rnn(fused, prev)
         out = self.rnn_drop_out(out)
         pose = self.regressor(out)
 
-        if self.transformer == False:
-            hc = (hc[0].transpose(1, 0).contiguous(), hc[1].transpose(1, 0).contiguous())
-
+        hc = (hc[0].transpose(1, 0).contiguous(), hc[1].transpose(1, 0).contiguous())
         return pose, hc
-
-
 
 class DeepVIO(nn.Module):
     def __init__(self, opt):
         super(DeepVIO, self).__init__()
 
         self.Feature_net = VisualIMUEncoder(opt)
-        self.Pose_net = Pose_RNN(opt, opt.transformer)
+        self.Pose_net = Pose_RNN(opt)
+        self.Policy_net = FusionModule(opt)
         self.opt = opt
-        self.transformer = opt.transformer
-        self.dense_connect = opt.dense_connect
+        
         initialization(self)
 
-    def forward(self, img, imu, is_first=True, hc=None, temp=5, selection='gumbel-softmax', p=0.5):
+    def forward(self, img, imu, is_training=True, history_out=None, selection='gumbel-softmax', gt_pose=None):
 
         fv, fi = self.Feature_net(img, imu)
-        batch_size = fv.shape[0]
         seq_len = fv.shape[1]
-
-        poses, decisions, logits= [], [], []
-        if hc is None:
-            hidden = torch.zeros(batch_size, self.opt.rnn_hidden_size).to(fv.device) 
-        elif self.transformer is True:
-            hidden = hc
-        else:
-            hidden = hc[0].contiguous()[:, -1, :]
         fv_alter = torch.zeros_like(fv) # zero padding in the paper, can be replaced by other 
-        
+        poses = []
         for i in range(seq_len):
-            if i == 0 and is_first:
+            decision = torch.ones(fv.shape[0], 1, 2, device=fv.device)
+            if i == 0 and is_training:
                 # The first relative pose is estimated by both images and imu by default
-                pose, hc = self.Pose_net(fv[:, i:i+1, :], None, fi[:, i:i+1, :], None, hc)
+                pose, history_out = self.Pose_net(fv[:, i:i+1, :], None, fi[:, i:i+1, :], None, history_out)
             else:
-                if selection == 'gumbel-softmax':
-                    # Otherwise, sample the decision from the policy network
-                    if self.transformer is True:
-                        p_in = torch.cat((fi[:, i, :], hidden[:, -1, :]), -1)
-                    else:
-                        p_in = torch.cat((fi[:, i, :], hidden), -1)
-                    logit, decision = self.Policy_net(p_in.detach(), temp)
-                    decision = decision.unsqueeze(1)
-                    logit = logit.unsqueeze(1)
-                    pose, hc = self.Pose_net(fv[:, i:i+1, :], fv_alter[:, i:i+1, :], fi[:, i:i+1, :], decision, hc)
-                    decisions.append(decision)
-                    logits.append(logit)
-                elif selection == 'random':
-                    decision = (torch.rand(fv.shape[0], 1, 2) < p).float()
-                    decision[:,:,1] = 1-decision[:,:,0]
-                    decision = decision.to(fv.device)
-                    logit = 0.5*torch.ones((fv.shape[0], 1, 2)).to(fv.device)
-                    pose, hc = self.Pose_net(fv[:, i:i+1, :], fv_alter[:, i:i+1, :], fi[:, i:i+1, :], decision, hc)
-                    decisions.append(decision)
-                    logits.append(logit)
+                pose, history_out = self.Pose_net(fv[:, i:i+1, :], fv_alter[:, i:i+1, :], fi[:, i:i+1, :], decision, history_out)
             poses.append(pose)
 
-            if self.dense_connect is True and self.transformer is True: 
-                if i ==0 and is_first:
-                    hidden = hc
-                else:
-                    hidden = torch.cat([hidden, hc], dim=1)
-            else:
-                hidden = hc[0].contiguous()[:, -1, :] if self.transformer is False else hc
-
         poses = torch.cat(poses, dim=1)
-        decisions = torch.cat(decisions, dim=1)
-        logits = torch.cat(logits, dim=1)
-        probs = torch.nn.functional.softmax(logits, dim=-1)
 
-        return poses, decisions, probs, hc
-
+        return poses, history_out
 
 class DeepVIO2(nn.Module):
     def __init__(self, opt):

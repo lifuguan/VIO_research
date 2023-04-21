@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer
+from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -213,7 +213,9 @@ def main():
         model = DeepVIO2(args)
     elif args.model_type == 'vanilla_transformer':
         model = DeepVIOVanillaTransformer(args)
-    else:
+    elif args.model_type == 'old_transformer':
+        model = DeepVIOOldTransformer(args)
+    elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
 
     # Continual training or not
