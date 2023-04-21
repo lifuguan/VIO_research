@@ -373,9 +373,18 @@ class DeepVIOVanillaTransformer(nn.Module):
         self.fuse_net = FusionModule(opt)
 
         self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
-        self.temporal_transformer = TemporalTransformer(opt, batch_first=False)
+        self.temporal_transformer = TemporalTransformer(opt, batch_first=True)
+
+        self.transformer = torch.nn.Transformer(d_model=self.latent_dim,
+                                       nhead=8,
+                                       num_encoder_layers=3,
+                                       num_decoder_layers=3,
+                                       dim_feedforward=512,
+                                       dropout=0.1, batch_first=True)
 
         self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
+
+        self.linear = nn.Linear(6, self.latent_dim) 
 
         initialization(self)
 
@@ -387,14 +396,18 @@ class DeepVIOVanillaTransformer(nn.Module):
 
         fused_feat = self.fuse_net(fv, fi)
         fused_feat = fused_feat.transpose(1, 0)
-        target = torch.zeros((seq_len, batch_size, self.latent_dim), device=device)
+        target = self.linear(torch.zeros((seq_len, batch_size, 6), device=device))
 
         pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
         pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
 
-        out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = None)
+        pos_fused_feat = pos_fused_feat.transpose(1, 0)
+        pos_target = pos_target.transpose(1, 0)
+
+        out = self.transformer(pos_fused_feat, pos_target)
+        # out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = None)
 
         # 输出出来的out应该是[10,1,768]
         pose = self.generator(out)
-        pose = pose.transpose(1, 0)
+        # pose = pose.transpose(1, 0)
         return pose, history_out
