@@ -15,19 +15,13 @@ from torch.nn.modules.transformer import TransformerEncoder, TransformerEncoderL
 from torch.nn.modules.transformer import TransformerDecoder, TransformerDecoderLayer
 
 class TemporalTransformer(Module):
-    def __init__(self, opt, batch_first: bool = False) -> None:
+    def __init__(self, opt, batch_first: bool = False, d_model = 768, nhead: int = 8, num_encoder_layers: int = 6, num_decoder_layers: int = 6, dim_feedforward: int = 2048, dropout: float = 0.1) -> None:
         super(TemporalTransformer, self).__init__()
-        nhead: int = 8
-        num_encoder_layers: int = 6
-        num_decoder_layers: int = 6
-        dim_feedforward: int = 2048
-        dropout: float = 0.1
         activation: Union[str, Callable[[Tensor], Tensor]] = F.relu
         layer_norm_eps: float = 1e-5
         norm_first: bool = False
         device=None
         dtype=None
-        d_model = opt.v_f_len + opt.i_f_len
         factory_kwargs = {'device': device, 'dtype': dtype}
 
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout,

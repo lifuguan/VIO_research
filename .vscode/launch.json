@@ -37,9 +37,9 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","results/try_have_time_series4/checkpoints/065.pth",
+                "--model","results/vanilla/checkpoints/best_4.69_new.pth",
                 "--data_dir","./data",
-                "--experiment_name","debug", "--transformer", "--seq2seq"
+                "--experiment_name","debug", "--model_type", "vanilla_transformer", "--gt_visibility"
             ]
         },
         {
@@ -68,7 +68,7 @@
                 "--seq_len", "11",
                 "--batch_size","16",
                 "--data_dir","./data",
-                "--experiment_name","debug","--model", "vanilla_transformer"
+                "--experiment_name","debug","--model", "vanilla_transformer", "--gt_visibility"
             ]
         }
     ]

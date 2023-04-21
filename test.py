@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2
+from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -35,8 +35,10 @@ parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='drop
 parser.add_argument('--workers', type=int, default=8, help='number of workers')
 parser.add_argument('--experiment_name', type=str, default='test_encoder_decoder', help='experiment name')
 parser.add_argument('--model', type=str, default='./results/full_transformer/checkpoints/045.pth', help='path to the pretrained model')
-parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
-parser.add_argument('--seq2seq', default=False, action='store_true', help='whether to use dense_connect')
+
+parser.add_argument('--model_type', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
+parser.add_argument('--gt_visibility', action='store_true', help='')
+
 
 args = parser.parse_args()
 
@@ -68,9 +70,17 @@ def main():
     tester = KITTI_tester(args)
 
     # Model initialization
-    model = DeepVIO2(args)
+    # Model initialization
+    if args.model_type == 'time_series':
+        model = DeepVIO2(args)
+    elif args.model_type == 'vanilla_transformer':
+        model = DeepVIOVanillaTransformer(args)
+    elif args.model_type == 'old_transformer':
+        model = DeepVIOOldTransformer(args)
+    else:
+        model = DeepVIO(args)
 
-    model.load_state_dict(torch.load(args.model))
+    model.load_state_dict(torch.load(args.model), strict=False)
     print('load model %s'%args.model)
     
     # Feed model to GPU

@@ -271,7 +271,7 @@ class DeepVIO2(nn.Module):
 
         initialization(self)
 
-    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None):
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
         fv, fi = self.feature_extractor(img, imu)
         
         device = fv.device
@@ -361,42 +361,43 @@ def initialization(net):
             m.weight.data.fill_(1)
             m.bias.data.zero_()
 
-
-
 class DeepVIOVanillaTransformer(nn.Module):
     def __init__(self, opt):
         super(DeepVIOVanillaTransformer, self).__init__()
 
         self.opt = opt
         self.latent_dim = self.opt.v_f_len + self.opt.i_f_len
-        self.feature_extractor = VisualIMUEncoder(opt)
+        self.Feature_net = VisualIMUEncoder(opt)
         self.fuse_net = FusionModule(opt)
 
         self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
-        self.temporal_transformer = TemporalTransformer(opt, batch_first=True)
-
-        self.transformer = torch.nn.Transformer(d_model=self.latent_dim,
+        self.transformer = TemporalTransformer(opt, 
+                                       d_model=self.latent_dim,
                                        nhead=8,
                                        num_encoder_layers=3,
-                                       num_decoder_layers=3,
-                                       dim_feedforward=512,
-                                       dropout=0.1, batch_first=True)
+                                       num_decoder_layers=3, dropout=0.1, 
+                                       dim_feedforward=512,  batch_first=True)
 
         self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
-
         self.linear = nn.Linear(6, self.latent_dim) 
 
+        self.gt_visibility = opt.gt_visibility
         initialization(self)
 
-    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None):
-        fv, fi = self.feature_extractor(img, imu)
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
+        fv, fi = self.Feature_net(img, imu)
         
         device = fv.device
         batch_size, seq_len = fv.shape[0], fv.shape[1] 
 
         fused_feat = self.fuse_net(fv, fi)
         fused_feat = fused_feat.transpose(1, 0)
-        target = self.linear(torch.zeros((seq_len, batch_size, 6), device=device))
+
+        if self.gt_visibility is True:
+            target = self.linear(gt_pose)
+            target = target.transpose(1, 0)
+        else:
+            target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
 
         pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
         pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
@@ -404,10 +405,53 @@ class DeepVIOVanillaTransformer(nn.Module):
         pos_fused_feat = pos_fused_feat.transpose(1, 0)
         pos_target = pos_target.transpose(1, 0)
 
-        out = self.transformer(pos_fused_feat, pos_target)
-        # out = self.temporal_transformer(pos_fused_feat, pos_target, history_out = None)
+        memory = self.transformer.encoder(pos_fused_feat, None, None)    # [10,16,768]
+        out = self.transformer.decoder(pos_target, memory, history_out=None) # [10,16,768]
 
         # 输出出来的out应该是[10,1,768]
         pose = self.generator(out)
-        # pose = pose.transpose(1, 0)
+        return pose, history_out
+
+
+class DeepVIOOldTransformer(nn.Module):
+    def __init__(self, opt):
+        super(DeepVIOOldTransformer, self).__init__()
+
+        self.Feature_net = VisualIMUEncoder(opt)
+        self.opt = opt
+        initialization(self)
+
+        # The main RNN network
+        self.d_model = opt.v_f_len + opt.i_f_len
+        self.positional_encoding = PositionalEncoding(emb_size=self.d_model, dropout=0.1)
+        self.transformer = torch.nn.Transformer(d_model=self.d_model,
+                                       nhead=8,
+                                       num_encoder_layers=3,
+                                       num_decoder_layers=3,
+                                       dim_feedforward=512,
+                                       dropout=0.1)
+        self.generator = nn.Linear(self.d_model, 6)#这里是6维
+        self.linear = nn.Linear(6, self.d_model)# tgt feature
+        self.fuse = FusionModule(opt)
+
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
+        tgt = gt_pose
+        fv, fi = self.Feature_net(img, imu)
+        if tgt.dim() == 3:
+            tgt = tgt.transpose(1,0)
+        if tgt.dim() == 3:
+            tgt = tgt.transpose(1,0)
+        fused = self.fuse(fv, fi)
+        fused = torch.transpose(fused, 1, 0)
+        fused = self.positional_encoding(fused)
+        if tgt.dim() == 2:
+            tgt = tgt.unsqueeze(0)
+        tgt = self.linear(tgt)
+        tgt = self.positional_encoding(tgt)
+        tgt = torch.transpose(tgt, 1, 0)    #[8,10,6]
+        memory = self.transformer.encoder(fused, None, None)    # [10,16,768]
+        out = self.transformer.decoder(tgt, memory, None, None) # [10,16,768]
+
+        pose = self.generator(out)
+        pose = pose.transpose(1,0)
         return pose, history_out

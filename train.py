@@ -35,9 +35,9 @@ parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight dec
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
 parser.add_argument('--seq_len', type=int, default=21, help='sequence length for LSTM')
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
-parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
-parser.add_argument('--epochs_joint', type=int, default=40, help='number of epochs for joint training')
-parser.add_argument('--epochs_fine', type=int, default=20, help='number of epochs for finetuning')
+parser.add_argument('--epochs_warmup', type=int, default=20, help='number of epochs for warmup')
+parser.add_argument('--epochs_joint', type=int, default=20, help='number of epochs for joint training')
+parser.add_argument('--epochs_fine', type=int, default=10, help='number of epochs for finetuning')
 parser.add_argument('--lr_warmup', type=float, default=5e-4, help='learning rate for warming up stage')
 parser.add_argument('--lr_joint', type=float, default=5e-5, help='learning rate for joint training stage')
 parser.add_argument('--lr_fine', type=float, default=1e-6, help='learning rate for finetuning stage')
@@ -56,9 +56,9 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
-parser.add_argument('--transformer', default=False, action='store_true', help='whether to use transformer')
-parser.add_argument('--seq2seq', default=False, action='store_true', help='whether to use seq2seq')
-parser.add_argument('--model', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
+
+parser.add_argument('--model_type', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
+parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
 
 args = parser.parse_args()
 
@@ -81,7 +81,8 @@ if args.experiment_name != 'debug':
         "epochs_warmup": args.epochs_warmup,
         "epochs_joint": args.epochs_joint,
         "epochs_fine": args.epochs_fine,
-        "model": args.model,
+        "model_type": args.model_type,
+        "gt_visibility": args.gt_visibility
         }
     )
 
@@ -117,7 +118,7 @@ def train(model, optimizer, train_loader, selection, logger, ep, p=0.5, weighted
 
         optimizer.zero_grad()
 
-        poses, _ = model(imgs, imus, is_training=True, selection=selection, history_out = pre_tgt) # [10,16,6]
+        poses, _ = model(imgs, imus, is_training=True, selection=selection, history_out = pre_tgt, gt_pose = gts) # [10,16,6]
 
         if not weighted:
             angle_loss = torch.nn.functional.mse_loss(poses[:,:,:3], gts[:, :, :3])
@@ -208,9 +209,9 @@ def main():
     tester = KITTI_tester(args)
 
     # Model initialization
-    if args.model == 'time_series':
+    if args.model_type == 'time_series':
         model = DeepVIO2(args)
-    elif args.model == 'vanilla_transformer':
+    elif args.model_type == 'vanilla_transformer':
         model = DeepVIOVanillaTransformer(args)
     else:
         model = DeepVIO(args)
@@ -227,10 +228,10 @@ def main():
     # Use the pre-trained flownet or not
     if args.pretrain_flownet and args.pretrain is None:
         pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
-        model_dict = model.feature_extractor.state_dict()
+        model_dict = model.Feature_net.state_dict()
         update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
         model_dict.update(update_dict)
-        model.feature_extractor.load_state_dict(model_dict)
+        model.Feature_net.load_state_dict(model_dict)
 
     # Feed model to GPU
     model.cuda(gpu_ids[0])
