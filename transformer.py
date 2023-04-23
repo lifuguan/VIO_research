@@ -43,7 +43,7 @@ class TemporalTransformer(Module):
 
         self.batch_first = batch_first
 
-    def forward(self, src: Tensor, tgt: Tensor, history_out = None) -> Tensor:
+    def forward(self, src: Tensor, tgt: Tensor, history_out = None, tgt_mask: Optional[Tensor] = None) -> Tensor:
 
         if not self.batch_first and src.size(1) != tgt.size(1):
             raise RuntimeError("the batch number of src and tgt must be equal")
@@ -54,7 +54,7 @@ class TemporalTransformer(Module):
             raise RuntimeError("the feature number of src and tgt must be equal to d_model")
 
         memory = self.encoder(src, None, None)
-        output = self.decoder(tgt, memory, history_out = history_out)
+        output = self.decoder(tgt, memory, history_out = history_out, tgt_mask=tgt_mask)
 
         return output
 
@@ -69,11 +69,11 @@ class TemporalTransformerDecoder(TransformerDecoder):
     def __init__(self, decoder_layer, num_layers, norm=None):
         super().__init__(decoder_layer, num_layers, norm)
     
-    def forward(self, tgt: Tensor, memory: Tensor, history_out: Tensor = None) -> Tensor:
+    def forward(self, tgt: Tensor, memory: Tensor, history_out: Tensor = None, tgt_mask: Optional[Tensor] = None) -> Tensor:
         output = tgt
 
         for mod in self.layers:
-            output = mod(output, memory, history_out)  # 传入history_out
+            output = mod(output, memory, history_out, tgt_mask)  # 传入history_out
 
         if self.norm is not None:
             output = self.norm(output)
@@ -88,24 +88,15 @@ class TemporalTransformerDecoderLayer(TransformerDecoderLayer):
                                                  **factory_kwargs)
         self.history_dropout = Dropout(dropout)
 
-    def forward(self, tgt: Tensor, memory: Tensor, history_out: Tensor = None) -> Tensor:
+    def forward(self, tgt: Tensor, memory: Tensor, history_out: Tensor = None, tgt_mask: Optional[Tensor] = None) -> Tensor:
         x = tgt
-        if self.norm_first:
-            x = x + self._sa_block(self.norm1(x), None, None)
-            if history_out is None:  # 如果history_out不为None，利用额外的mha进行cross attention
-                x = x + self._mha_block(self.norm2(x), memory, None, None)
-            else:
-                x = x + self._mha_block(self.norm2(x), memory, None, None) + self._history_mha_block(self.norm2(x), history_out)
-
-            x = x + self._ff_block(self.norm3(x))
+        x = self.norm1(x + self._sa_block(x, attn_mask=tgt_mask, key_padding_mask=None))            
+        if history_out is None:  # 如果history_out不为None，利用额外的mha进行cross attention
+            x = self.norm2(x + self._mha_block(x, memory, None, None))
         else:
-            x = self.norm1(x + self._sa_block(x, None, None))            
-            if history_out is None:  # 如果history_out不为None，利用额外的mha进行cross attention
-                x = self.norm2(x + self._mha_block(x, memory, None, None))
-            else:
-                x = self.norm2(x + self._mha_block(x, memory, None, None) + self._history_mha_block(x, history_out))
+            x = self.norm2(x + self._mha_block(x, memory, None, None) + self._history_mha_block(x, history_out))
 
-            x = self.norm3(x + self._ff_block(x))
+        x = self.norm3(x + self._ff_block(x))
 
         return x
 
