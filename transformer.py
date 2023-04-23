@@ -1,7 +1,8 @@
 import copy
 from typing import Optional, Any, Union, Callable
+import math
 
-import torch
+from torch import nn
 from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.modules.module import Module
@@ -14,6 +15,16 @@ from torch.nn.modules.normalization import LayerNorm
 from torch.nn.modules.transformer import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.modules.transformer import TransformerDecoder, TransformerDecoderLayer
 
+# helper Module to convert tensor of input indices into corresponding tensor of token embeddings
+class TokenEmbedding(nn.Module):
+    def __init__(self, vocab_size: int, emb_size):
+        super(TokenEmbedding, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, emb_size)
+        self.emb_size = emb_size
+
+    def forward(self, tokens: Tensor):
+        return self.embedding(tokens.long()) * math.sqrt(self.emb_size)
+    
 class TemporalTransformer(Module):
     def __init__(self, opt, batch_first: bool = False, d_model = 768, nhead: int = 8, num_encoder_layers: int = 6, num_decoder_layers: int = 6, dim_feedforward: int = 2048, dropout: float = 0.1) -> None:
         super(TemporalTransformer, self).__init__()

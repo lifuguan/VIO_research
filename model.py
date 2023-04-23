@@ -5,7 +5,8 @@ from torch.nn.init import kaiming_normal_
 import numpy as np
 import torch.nn.functional as F
 import math
-from transformer import TemporalTransformer
+from transformer import TemporalTransformer, TokenEmbedding
+
 
 from utils.utils import create_mask
 
@@ -303,6 +304,85 @@ def initialization(net):
         elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
             m.weight.data.fill_(1)
             m.bias.data.zero_()
+
+
+
+# add tgt_mask, tgt_embedding, change test pipeline
+class DeepVIOTransformer(nn.Module):
+    def __init__(self, opt):
+        super(DeepVIOVanillaTransformer, self).__init__()
+
+        self.opt = opt
+        self.latent_dim = self.opt.v_f_len + self.opt.i_f_len
+        self.Feature_net = VisualIMUEncoder(opt)
+        self.fuse_net = FusionModule(opt)
+
+        self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
+        self.transformer = TemporalTransformer(opt, 
+                                       d_model=self.latent_dim,
+                                       nhead=8,
+                                       num_encoder_layers=3,
+                                       num_decoder_layers=3, dropout=0.1, 
+                                       dim_feedforward=512,  batch_first=True)
+
+        self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
+        self.linear = nn.Linear(6, self.latent_dim) 
+        self.tgt_to_emb = TokenEmbedding(opt.seq_len - 1, self.latent_dim)
+
+        self.gt_visibility = opt.gt_visibility
+        self.only_encoder = opt.only_encoder
+        initialization(self)
+
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
+        fv, fi = self.Feature_net(img, imu)
+        
+        device = fv.device
+        batch_size, seq_len = fv.shape[0], fv.shape[1] 
+
+        fused_feat = self.fuse_net(fv, fi)
+
+        if self.gt_visibility is True:
+            src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
+            # target = self.linear(gt_pose)
+            target = self.tgt_to_emb(gt_pose)
+
+            fused_feat = fused_feat.transpose(1, 0)
+            target = target.transpose(1, 0)
+        else:
+            # target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
+            target = self.tgt_to_emb(gt_pose)
+            
+            fused_feat = fused_feat.transpose(1, 0)
+
+        pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
+        pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
+
+        pos_fused_feat = pos_fused_feat.transpose(1, 0)
+        pos_target = pos_target.transpose(1, 0)
+
+        memory = self.transformer.encoder(pos_fused_feat, None, None)    # [10,16,768]
+        if self.only_encoder is True:
+            pose = self.generator(memory)
+            return pose, history_out
+        if not is_training:
+            ys = torch.ones(1, 1).fill_(start_symbol).type(torch.long).to(DEVICE)
+            for i in range(max_len-1):
+                memory = memory.to(DEVICE)
+                tgt_mask = (generate_square_subsequent_mask(ys.size(0))
+                            .type(torch.bool)).to(DEVICE)
+                out = model.decode(ys, memory, tgt_mask)
+                out = out.transpose(0, 1)
+                prob = model.generator(out[:, -1])
+                _, next_word = torch.max(prob, dim=1)
+                next_word = next_word.item()
+
+                ys = torch.cat([ys,
+                                torch.ones(1, 1).type_as(src.data).fill_(next_word)], dim=0)
+                if next_word == EOS_IDX:
+                    break
+        out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=tgt_mask) # [10,16,768]
+        pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
+        return pose, history_out
 
 class DeepVIOVanillaTransformer(nn.Module):
     def __init__(self, opt):
