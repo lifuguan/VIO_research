@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer
+from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer, DeepVIOTransformer
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -77,6 +77,8 @@ def main():
         model = DeepVIOVanillaTransformer(args)
     elif args.model_type == 'old_transformer':
         model = DeepVIOOldTransformer(args)
+    elif args.model_type == 'transformer_emb':
+        model = DeepVIOTransformer(args)
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
 
