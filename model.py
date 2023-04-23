@@ -7,6 +7,8 @@ import torch.nn.functional as F
 import math
 from transformer import TemporalTransformer
 
+from utils.utils import create_mask
+
 def conv(batchNorm, in_planes, out_planes, kernel_size=3, stride=1, dropout=0):
     if batchNorm:
         return nn.Sequential(
@@ -333,13 +335,16 @@ class DeepVIOVanillaTransformer(nn.Module):
         batch_size, seq_len = fv.shape[0], fv.shape[1] 
 
         fused_feat = self.fuse_net(fv, fi)
-        fused_feat = fused_feat.transpose(1, 0)
 
         if self.gt_visibility is True:
+            src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
             target = self.linear(gt_pose)
+
+            fused_feat = fused_feat.transpose(1, 0)
             target = target.transpose(1, 0)
         else:
             target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
+            fused_feat = fused_feat.transpose(1, 0)
 
         pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
         pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
@@ -351,7 +356,7 @@ class DeepVIOVanillaTransformer(nn.Module):
         if self.only_encoder is True:
             pose = self.generator(memory)
             return pose, history_out
-        out = self.transformer.decoder(pos_target, memory, history_out=None) # [10,16,768]
+        out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=tgt_mask) # [10,16,768]
         pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
         return pose, history_out
 
