@@ -35,9 +35,9 @@ parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight dec
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
 parser.add_argument('--seq_len', type=int, default=21, help='sequence length for LSTM')
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
-parser.add_argument('--epochs_warmup', type=int, default=20, help='number of epochs for warmup')
-parser.add_argument('--epochs_joint', type=int, default=20, help='number of epochs for joint training')
-parser.add_argument('--epochs_fine', type=int, default=10, help='number of epochs for finetuning')
+parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
+parser.add_argument('--epochs_joint', type=int, default=40, help='number of epochs for joint training')
+parser.add_argument('--epochs_fine', type=int, default=20, help='number of epochs for finetuning')
 parser.add_argument('--lr_warmup', type=float, default=5e-4, help='learning rate for warming up stage')
 parser.add_argument('--lr_joint', type=float, default=5e-5, help='learning rate for joint training stage')
 parser.add_argument('--lr_fine', type=float, default=1e-6, help='learning rate for finetuning stage')
@@ -59,6 +59,7 @@ parser.add_argument('--weighted', default=False, action='store_true', help='whet
 
 parser.add_argument('--model_type', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
 parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
+parser.add_argument('--only_encoder', default=False, action='store_true', help='')
 
 args = parser.parse_args()
 
@@ -288,7 +289,8 @@ def main():
 
             if t_rel < best:
                 best = t_rel 
-                torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
+                if best < 10:
+                    torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
 
             message = "Epoch {} evaluation Seq. 05 , t_rel: {}, r_rel: {}, t_rmse: {}, r_rmse: {}" .format(ep, round(errors[0]['t_rel'], 4), round(errors[0]['r_rel'], 4), round(errors[0]['t_rmse'], 4), round(errors[0]['r_rmse'], 4))
             logger.info(message)

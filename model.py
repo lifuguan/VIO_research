@@ -323,6 +323,7 @@ class DeepVIOVanillaTransformer(nn.Module):
         self.linear = nn.Linear(6, self.latent_dim) 
 
         self.gt_visibility = opt.gt_visibility
+        self.only_encoder = opt.only_encoder
         initialization(self)
 
     def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
@@ -347,10 +348,11 @@ class DeepVIOVanillaTransformer(nn.Module):
         pos_target = pos_target.transpose(1, 0)
 
         memory = self.transformer.encoder(pos_fused_feat, None, None)    # [10,16,768]
+        if self.only_encoder is True:
+            pose = self.generator(memory)
+            return pose, history_out
         out = self.transformer.decoder(pos_target, memory, history_out=None) # [10,16,768]
-
-        # 输出出来的out应该是[10,1,768]
-        pose = self.generator(out)
+        pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
         return pose, history_out
 
 
