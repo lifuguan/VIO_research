@@ -13,3 +13,5 @@ en_core_web_sm-3.5.0.tar.gz
 training.tar.gz
 validation.tar copy.gz
 .gitignore
+machine_translation.py
+machine_translation_debug.py
