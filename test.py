@@ -36,7 +36,7 @@ parser.add_argument('--workers', type=int, default=3, help='number of workers')
 parser.add_argument('--experiment_name', type=str, default='test_encoder_decoder', help='experiment name')
 parser.add_argument('--model', type=str, default='./results/full_transformer/checkpoints/045.pth', help='path to the pretrained model')
 
-parser.add_argument('--model_type', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
+parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series]')
 parser.add_argument('--gt_visibility', action='store_true', help='')
 
 
@@ -82,7 +82,7 @@ def main():
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
 
-    model.load_state_dict(torch.load(args.model), strict=False)
+    model.load_state_dict(torch.load(args.model), strict=True)
     print('load model %s'%args.model)
     
     # Feed model to GPU

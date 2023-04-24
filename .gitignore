@@ -3,6 +3,7 @@ results
 __pycache__
 data/poses
 data/sequences
+data
 wandb
 environment.yml
 Untitled-1.py

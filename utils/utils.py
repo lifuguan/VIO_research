@@ -5,6 +5,7 @@ import time
 import scipy.io as sio
 import torch
 from PIL import Image
+from enum import Enum
 import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 import math
@@ -231,9 +232,13 @@ def generate_square_subsequent_mask(sz, DEVICE):
 
 def create_mask(src, tgt):
     DEVICE = src.device
-    src_seq_len = src.shape[0]
-    tgt_seq_len = tgt.shape[0]
+    src_seq_len = src.shape[1]
+    tgt_seq_len = tgt.shape[1]
 
     tgt_mask = generate_square_subsequent_mask(tgt_seq_len, DEVICE)
     src_mask = torch.zeros((src_seq_len, src_seq_len),device=DEVICE).type(torch.bool)
     return src_mask, tgt_mask
+class State(Enum):
+    Training = 1
+    Inference = 2
+    is_first = 3

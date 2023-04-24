@@ -331,7 +331,7 @@ class DeepVIOTransformer(nn.Module):
 
         initialization(self)
 
-    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None, ys=None):
         fv, fi = self.Feature_net(img, imu)
         fused_feat = self.fuse_net(fv, fi)
         DEVICE = fused_feat.device
@@ -343,25 +343,27 @@ class DeepVIOTransformer(nn.Module):
 
         if is_training is True:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
-            target = self.tgt_to_emb(gt_pose)
-            target = target.transpose(1, 0)
+            # target = self.tgt_to_emb(gt_pose)
+            target = self.linear(gt_pose)
+            target = target.transpose(1, 0)#[10,16,768]
 
             pos_target = self.positional_encoding(target).transpose(1, 0)         # seq = 20, [0:10] = history, [10:20] = current
             out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=tgt_mask) # [10,16,768]
             pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
 
         if not is_training:
-            ys = torch.ones(1, 6).type(torch.long).to(DEVICE)
-            for i in range(fused_feat.shape[1] - 1):
-                tgt_mask = (generate_square_subsequent_mask(ys.size(0)).type(torch.bool)).to(DEVICE)
-                target = self.tgt_to_emb(ys)
-                target = target.transpose(1, 0)
-                out = self.transformer.decode(ys, memory, tgt_mask)
+            for i in range(fused_feat.shape[0] - 1):
+                tgt_mask = generate_square_subsequent_mask(ys.size(0), DEVICE)
+                target = self.linear(ys)# seq, batch, feat_size
+                target = target.transpose(1, 0)# batch, seq, feat_size
+                out = self.transformer.decoder(target, memory, None, tgt_mask)
                 out = out.transpose(0, 1)
-                pred_pose = self.generator(out[:, -1])
+                pred_pose = self.generator(out[-1])
 
                 ys = torch.cat([ys, pred_pose.unsqueeze(0)], dim=0)
-
+                
+            pose = ys
+            # history_out = pose[-1].unsqueeze(0)
         return pose, history_out
 
 class DeepVIOVanillaTransformer(nn.Module):

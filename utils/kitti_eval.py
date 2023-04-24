@@ -74,19 +74,24 @@ class KITTI_tester():
     def test_one_path(self, net, df, selection, num_gpu=1):
         history_out = None
         pose_list, decision_list, probs_list= [], [], []
+        ys = torch.ones(1, 1, 6).type(torch.float32)
         for i, (image_seq, imu_seq, gt_seq) in tqdm(enumerate(df), total=len(df), smoothing=0.9):  
             x_in = image_seq.unsqueeze(0).repeat(num_gpu,1,1,1,1).cuda()
             i_in = imu_seq.unsqueeze(0).repeat(num_gpu,1,1).cuda()
             gt_seq = gt_seq.astype(np.float32)
             gt_seq = torch.from_numpy(gt_seq).unsqueeze(0).cuda()
+            ys = ys.to(x_in.device)
 
             with torch.no_grad():#给返回hc，这样就参与进来了
                 if self.args.model_type == "originalDeepVIO":
                     pose, history_out = net(x_in, i_in, is_training=(i==0), history_out=history_out, selection=selection, gt_pose=gt_seq)
+                elif self.args.model_type == "transformer_emb":
+                    pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq, ys=ys)
                 else:
                     pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq)
             
-            pose_list.append(pose[0,:,:].detach().cpu().numpy())
+            ys = pose[-1].unsqueeze(0)
+            pose_list.append(pose.transpose(1,0)[0,:,:].detach().cpu().numpy())
         pose_est = np.vstack(pose_list)      
         return pose_est
 

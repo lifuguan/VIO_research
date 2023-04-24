@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer
+from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer, DeepVIOTransformer
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -57,7 +57,7 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
 
-parser.add_argument('--model_type', type=str, default='vanilla_transformer', help='type of optimizer [vanilla_transformer, time_series]')
+parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series, transformer_emb, originalDeepVIO]')
 parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
 parser.add_argument('--only_encoder', default=False, action='store_true', help='')
 
@@ -218,6 +218,8 @@ def main():
         model = DeepVIOOldTransformer(args)
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
+    elif args.model_type == 'transformer_emb':
+        model = DeepVIOTransformer(args)
 
     # Continual training or not
     if args.pretrain is not None:

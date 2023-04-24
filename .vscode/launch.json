@@ -37,9 +37,11 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","results/vanilla/checkpoints/best_4.69_new.pth",
-                "--data_dir","./data",
-                "--experiment_name","debug", "--model_type", "transformer_emb", "--gt_visibility"
+                "--model","./results/full_transformer/checkpoints/best_4.72.pth",
+                "--data_dir","./data/data",
+                "--experiment_name","debug",
+                "--model_type", "transformer_emb",
+                "--gt_visibility"
             ]
         },
         {
@@ -52,8 +54,11 @@
             "args": [
                 "--gpu_ids","0",
                 "--batch_size","16",
-                "--data_dir","./data",
-                "--experiment_name","debug","--model", "time_series"
+                "--data_dir","./data/data",
+                "--experiment_name","debug",
+                "--model", "transformer_emb",
+                "--seq_len","11",
+                
             ]
         },
         {
