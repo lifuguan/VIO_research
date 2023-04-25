@@ -306,7 +306,7 @@ def initialization(net):
             m.bias.data.zero_()
 
 
-
+# 这是one by one finished test结果15左右，显然不能用，测试一版原本的transformer
 # add tgt_mask, tgt_embedding, change test pipeline
 class DeepVIOTransformer(nn.Module):
     def __init__(self, opt):
@@ -337,9 +337,9 @@ class DeepVIOTransformer(nn.Module):
         DEVICE = fused_feat.device
 
         fused_feat = fused_feat.transpose(1, 0)
-        pos_fused_feat = self.positional_encoding(fused_feat).transpose(1, 0) # seq = 20, [0:10] = history, [10:20] = current
-
-        memory = self.transformer.encoder(pos_fused_feat, None, None)    # [10,16,768]
+        pos_fused_feat = self.positional_encoding(fused_feat).transpose(1, 0) 
+        src_mask = torch.zeros((fused_feat.shape[0], fused_feat.shape[0]),device=DEVICE).type(torch.bool)
+        memory = self.transformer.encoder(pos_fused_feat, src_mask, None)    # [10,16,768]
 
         if is_training is True:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
@@ -347,7 +347,7 @@ class DeepVIOTransformer(nn.Module):
             target = self.linear(gt_pose)
             target = target.transpose(1, 0)#[10,16,768]
 
-            pos_target = self.positional_encoding(target).transpose(1, 0)         # seq = 20, [0:10] = history, [10:20] = current
+            pos_target = self.positional_encoding(target).transpose(1, 0)     
             out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=tgt_mask) # [10,16,768]
             pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
 
