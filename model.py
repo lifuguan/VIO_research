@@ -358,18 +358,18 @@ class DeepVIOTransformer(nn.Module):
             pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
 
         if not is_training:
-            for i in range(fused_feat.shape[0] - 1):
+            for i in range(fused_feat.shape[0]):# fused_feat.shape[0] - 1 -> bug
                 tgt_mask = generate_square_subsequent_mask(ys.size(0), DEVICE)
                 target = self.linear(ys)# seq, batch, feat_size
                 target = target.transpose(1, 0)# batch, seq, feat_size
-                out = self.transformer.decoder(target, memory, None, tgt_mask)
+                # out = self.transformer.decoder(target, memory, None, tgt_mask)
                 out = self.transformer.decoder(target, memory, tgt_mask=tgt_mask)
                 out = out.transpose(0, 1)
                 pred_pose = self.generator(out[-1])
 
                 ys = torch.cat([ys, pred_pose.unsqueeze(0)], dim=0)
-                
-            pose = ys
+            # pose = ys
+            pose = ys[1:,:,:]
             # history_out = pose[-1].unsqueeze(0)
         return pose, history_out
 

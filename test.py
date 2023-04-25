@@ -83,12 +83,14 @@ def main():
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
 
-    model.load_state_dict(torch.load(args.model), strict=False)
+    # model.load_state_dict(torch.load(args.model), strict=False)
+    model.load_state_dict(torch.load(args.model, map_location=torch.device('cuda:0')), strict=False)
+    model.to(torch.device('cuda:0'))
     print('load model %s'%args.model)
     
     # Feed model to GPU
-    model.cuda(gpu_ids[0])
-    model = torch.nn.DataParallel(model, device_ids = gpu_ids)
+    # model.cuda(gpu_ids[0])
+    # model = torch.nn.DataParallel(model, device_ids = gpu_ids)
     model.eval()
 
     errors = tester.eval(model, 'gumbel-softmax', num_gpu=len(gpu_ids))
