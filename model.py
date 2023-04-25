@@ -354,7 +354,7 @@ class DeepVIOTransformer(nn.Module):
             pos_target = self.positional_encoding(target).transpose(1, 0)         # seq = 20, [0:10] = history, [10:20] = current
 
             # out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=None) # [10,16,768]
-            out = self.transformer.decoder(pos_target, memory, tgt_mask=None) # [10,16,768]
+            out = self.transformer.decoder(pos_target, memory, tgt_mask=tgt_mask) # [10,16,768]
             pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
 
         if not is_training:
