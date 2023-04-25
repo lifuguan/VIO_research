@@ -318,12 +318,18 @@ class DeepVIOTransformer(nn.Module):
         self.fuse_net = FusionModule(opt)
 
         self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
-        self.transformer = TemporalTransformer(opt, 
-                                       d_model=self.latent_dim,
+        # self.transformer = TemporalTransformer(opt, 
+        #                                d_model=self.latent_dim,
+        #                                nhead=8,
+        #                                num_encoder_layers=3,
+        #                                num_decoder_layers=3, dropout=0.1, 
+        #                                dim_feedforward=512,  batch_first=True)
+        self.transformer = torch.nn.Transformer(d_model=self.latent_dim,
                                        nhead=8,
                                        num_encoder_layers=3,
-                                       num_decoder_layers=3, dropout=0.1, 
-                                       dim_feedforward=512,  batch_first=True)
+                                       num_decoder_layers=3,
+                                       dim_feedforward=512,
+                                       dropout=0.1, batch_first=True)
 
         self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
         self.linear = nn.Linear(6, self.latent_dim) 
@@ -344,11 +350,10 @@ class DeepVIOTransformer(nn.Module):
         if is_training is True:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
             # target = self.tgt_to_emb(gt_pose)
-            target = self.linear(gt_pose)
-            target = target.transpose(1, 0)#[10,16,768]
-
+            target = self.linear(gt_pose).transpose(1, 0) # [10,16,768]
             pos_target = self.positional_encoding(target).transpose(1, 0)         # seq = 20, [0:10] = history, [10:20] = current
-            out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=tgt_mask) # [10,16,768]
+
+            out = self.transformer.decoder(pos_target, memory, history_out=None, tgt_mask=None) # [10,16,768]
             pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
 
         if not is_training:
