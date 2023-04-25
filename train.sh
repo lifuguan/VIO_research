@@ -8,6 +8,6 @@ python test.py --gpu_ids 2  --seq_len 21 --data_dir ./data --experiment_name deb
 
 ################
 #train
-python train.py --gpu_ids 0 --batch_size 16 --seq_len 11 --workers 4 --data_dir ./data/data --experiment_name one_by_one_predict --model_type transformer_emb
+python train.py --gpu_ids 1 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name one_by_one_predict2 --model_type transformer_emb
 #test
 python test.py --gpu_ids 0 --seq_len 11 --data_dir ./data/data --experiment_name test --model_type transformer_emb --model ./results/full_transformer/checkpoints/best_4.72.pth
