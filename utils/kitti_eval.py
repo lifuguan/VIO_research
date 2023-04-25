@@ -87,11 +87,12 @@ class KITTI_tester():
                     pose, history_out = net(x_in, i_in, is_training=(i==0), history_out=history_out, selection=selection, gt_pose=gt_seq)
                 elif self.args.model_type == "transformer_emb":
                     pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq, ys=ys)
+                    ys = pose[-1].unsqueeze(0)
+                    pose_list.append(pose.transpose(1,0)[0,:,:].detach().cpu().numpy())
                 else:
                     pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq)
+                    pose_list.append(pose[0,:,:].detach().cpu().numpy())
             
-            ys = pose[-1].unsqueeze(0)
-            pose_list.append(pose.transpose(1,0)[0,:,:].detach().cpu().numpy())
         pose_est = np.vstack(pose_list)      
         return pose_est
 

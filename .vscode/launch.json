@@ -37,10 +37,10 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","./results/full_transformer/checkpoints/best_4.72.pth",
-                "--data_dir","./data/data",
+                "--model","results/vanilla/checkpoints/best_4.69_new.pth",
+                "--data_dir","./data",
                 "--experiment_name","debug",
-                "--model_type", "transformer_emb",
+                "--model_type", "vanilla_transformer",
                 "--gt_visibility"
             ]
         },

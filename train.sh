@@ -4,7 +4,7 @@ python train.py --gpu_ids 2 --batch_size 16 --seq_len 11 --workers 48 --data_dir
 python train.py --gpu_ids 3 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name only_encoder --model_type vanilla_transformer --only_encoder
 
 
-python test.py --gpu_ids 2  --seq_len 21 --data_dir ./data --experiment_name debug --model_type vanilla_transformer  --model results/vanilla/checkpoints/best_4.69_new.pth
+python test.py --gpu_ids 2  --seq_len 11 --data_dir ./data --experiment_name debug --model_type vanilla_transformer  --model results/vanilla/checkpoints/best_4.69_new.pth
 
 ################
 #train

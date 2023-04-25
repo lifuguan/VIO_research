@@ -38,6 +38,7 @@ parser.add_argument('--model', type=str, default='./results/full_transformer/che
 
 parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series]')
 parser.add_argument('--gt_visibility', action='store_true', help='')
+parser.add_argument('--only_encoder', action='store_true', help='')
 
 
 args = parser.parse_args()
@@ -82,7 +83,7 @@ def main():
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
 
-    model.load_state_dict(torch.load(args.model), strict=True)
+    model.load_state_dict(torch.load(args.model), strict=False)
     print('load model %s'%args.model)
     
     # Feed model to GPU
