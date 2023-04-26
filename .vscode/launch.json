@@ -36,12 +36,13 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--gpu_ids","0",
-                "--model","results/vanilla/checkpoints/best_4.69_new.pth",
+                "--gpu_ids","1",
+                "--model","./model_zoo/099.pth",
                 "--data_dir","./data",
                 "--experiment_name","debug",
-                "--model_type", "vanilla_transformer",
-                "--gt_visibility"
+                "--model_type", "vanilla_transformer",//vanilla_transformer
+                "--gt_visibility",
+                "--decoder_layer_num","1"
             ]
         },
         {

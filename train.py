@@ -60,6 +60,7 @@ parser.add_argument('--weighted', default=False, action='store_true', help='whet
 parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series, transformer_emb, originalDeepVIO]')
 parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
 parser.add_argument('--only_encoder', default=False, action='store_true', help='')
+parser.add_argument('--decoder_layer_num', default=1, type=int, help='the number of transformer’s decoder layer')
 
 args = parser.parse_args()
 

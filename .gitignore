@@ -16,3 +16,5 @@ validation.tar copy.gz
 .gitignore
 machine_translation.py
 machine_translation_debug.py
+debug.ipynb
+debug_figure

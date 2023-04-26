@@ -259,7 +259,7 @@ class DeepVIO2(nn.Module):
 
         # 输出出来的out应该是[10,1,768]
         pose = self.generator(out)
-        pose = pose.transpose(1, 0)
+        pose = pose.transpose(1, 0) 
         return pose, history_out
 
 class PositionalEncoding(nn.Module):
@@ -344,8 +344,8 @@ class DeepVIOTransformer(nn.Module):
 
         fused_feat = fused_feat.transpose(1, 0)
         pos_fused_feat = self.positional_encoding(fused_feat).transpose(1, 0) 
-        src_mask = torch.zeros((fused_feat.shape[0], fused_feat.shape[0]),device=DEVICE).type(torch.bool)
-        memory = self.transformer.encoder(pos_fused_feat, src_mask, None)    # [10,16,768]
+        src_mask = torch.zeros((fused_feat.shape[0], fused_feat.shape[0]), device=DEVICE).type(torch.bool)
+        memory = self.transformer.encoder(pos_fused_feat, None, None)    # [10,16,768]
 
         if is_training is True:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
@@ -387,7 +387,7 @@ class DeepVIOVanillaTransformer(nn.Module):
                                        d_model=self.latent_dim,
                                        nhead=8,
                                        num_encoder_layers=3,
-                                       num_decoder_layers=3, dropout=0.1, 
+                                       num_decoder_layers=opt.decoder_layer_num, dropout=0.1, 
                                        dim_feedforward=512,  batch_first=True)
 
         self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
