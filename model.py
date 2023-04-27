@@ -326,8 +326,8 @@ class DeepVIOTransformer(nn.Module):
         #                                dim_feedforward=512,  batch_first=True)
         self.transformer = torch.nn.Transformer(d_model=self.latent_dim,
                                        nhead=8,
-                                       num_encoder_layers=3,
-                                       num_decoder_layers=3,
+                                       num_encoder_layers=opt.encoder_layer_num,
+                                       num_decoder_layers=opt.decoder_layer_num,
                                        dim_feedforward=512,
                                        dropout=0.1, batch_first=True)
 
@@ -385,8 +385,8 @@ class DeepVIOVanillaTransformer(nn.Module):
         self.positional_encoding = PositionalEncoding(emb_size=self.latent_dim, dropout=0.1)
         self.transformer = TemporalTransformer(opt, 
                                        d_model=self.latent_dim,
-                                       nhead=8,
-                                       num_encoder_layers=3,
+                                       nhead=8, 
+                                       num_encoder_layers=opt.encoder_layer_num, 
                                        num_decoder_layers=opt.decoder_layer_num, dropout=0.1, 
                                        dim_feedforward=512,  batch_first=True)
 
@@ -404,6 +404,7 @@ class DeepVIOVanillaTransformer(nn.Module):
         batch_size, seq_len = fv.shape[0], fv.shape[1] 
 
         fused_feat = self.fuse_net(fv, fi)
+        src_seq_len = fused_feat.shape[1]
 
         if self.gt_visibility is True:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
@@ -421,7 +422,9 @@ class DeepVIOVanillaTransformer(nn.Module):
         pos_fused_feat = pos_fused_feat.transpose(1, 0)
         pos_target = pos_target.transpose(1, 0)
 
-        memory = self.transformer.encoder(pos_fused_feat, None, None)    # [10,16,768]
+        src_mask = torch.zeros((src_seq_len, src_seq_len),device=device).type(torch.bool)
+
+        memory = self.transformer.encoder(pos_fused_feat, src_mask, None)    # [10,16,768]
         if self.only_encoder is True:
             pose = self.generator(memory)
             return pose, history_out
@@ -443,8 +446,8 @@ class DeepVIOOldTransformer(nn.Module):
         self.positional_encoding = PositionalEncoding(emb_size=self.d_model, dropout=0.1)
         self.transformer = torch.nn.Transformer(d_model=self.d_model,
                                        nhead=8,
-                                       num_encoder_layers=3,
-                                       num_decoder_layers=3,
+                                       num_encoder_layers=opt.encoder_layer_num,
+                                       num_decoder_layers=opt.encoder_layer_num,
                                        dim_feedforward=512,
                                        dropout=0.1)
         self.generator = nn.Linear(self.d_model, 6)#这里是6维

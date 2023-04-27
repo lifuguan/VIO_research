@@ -39,7 +39,8 @@ parser.add_argument('--model', type=str, default='./results/full_transformer/che
 parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series]')
 parser.add_argument('--gt_visibility', action='store_true', help='')
 parser.add_argument('--only_encoder', action='store_true', help='')
-parser.add_argument('--decoder_layer_num', default=1, type=int, help='the number of transformer’s decoder layer')
+parser.add_argument('--decoder_layer_num', default=3, type=int, help='the number of transformer’s decoder layer')
+parser.add_argument('--encoder_layer_num', default=3, type=int, help='the number of transformer’s encoder layer')
 
 
 args = parser.parse_args()
@@ -85,7 +86,11 @@ def main():
         model = DeepVIO(args)
     DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     # model.load_state_dict(torch.load(args.model), strict=False)
-    model.load_state_dict(torch.load(args.model, map_location=DEVICE), strict=False)
+    state_dict = torch.load(args.model, map_location=DEVICE)
+    # 这是为了删除权重文件中多余网络参数而设置
+    # del state_dict['tgt_to_emb.embedding.weight']
+    model.load_state_dict(state_dict, strict=True)
+
     model.to(DEVICE)
     print('load model %s'%args.model)
     

@@ -35,17 +35,21 @@ class TemporalTransformer(Module):
         dtype=None
         factory_kwargs = {'device': device, 'dtype': dtype}
 
-        encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout,
-                                                activation, layer_norm_eps, batch_first, norm_first,
-                                                **factory_kwargs)
+        # encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout,
+        #                                         activation, layer_norm_eps, batch_first, norm_first,
+        #                                         **factory_kwargs)
+        # self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
+        encoder_layer = TemporalTransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout,
+                                                 activation, layer_norm_eps, batch_first, norm_first,
+                                                 **factory_kwargs)
         encoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
+        self.encoder = TemporalTransformerEncoder(encoder_layer, opt.encoder_layer_num, encoder_norm)
 
         decoder_layer = TemporalTransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout,
                                                 activation, layer_norm_eps, batch_first, norm_first,
                                                 **factory_kwargs)
         decoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.decoder = TemporalTransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm)
+        self.decoder = TemporalTransformerDecoder(decoder_layer, opt.decoder_layer_num, decoder_norm)
 
         self._reset_parameters()
 
@@ -76,6 +80,33 @@ class TemporalTransformer(Module):
             if p.dim() > 1:
                 xavier_uniform_(p)
 
+class TemporalTransformerEncoderLayer(TransformerEncoderLayer):
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation=F.relu, layer_norm_eps=1e-5, batch_first=False, norm_first=False, device=None, dtype=None) -> None:
+        super().__init__(d_model, nhead, dim_feedforward, dropout, activation, layer_norm_eps, batch_first, norm_first, device, dtype)
+        factory_kwargs = {'device': device, 'dtype': dtype}
+    
+    def forward(self, src: Tensor, src_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        x = src
+
+        x = self.norm1(x + self._sa_block(x, src_mask, src_key_padding_mask))
+        x = self.norm2(x + self._ff_block(x))
+
+        return x
+
+class TemporalTransformerEncoder(TransformerEncoder):
+    def __init__(self, encoder_layer, num_layers, norm=None):
+        super().__init__(encoder_layer, num_layers, norm)
+    
+    def forward(self, src: Tensor, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        output = src
+
+        for mod in self.layers:
+            output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+
+        if self.norm is not None:
+            output = self.norm(output)
+        return output
+
 class TemporalTransformerDecoder(TransformerDecoder):
     def __init__(self, decoder_layer, num_layers, norm=None):
         super().__init__(decoder_layer, num_layers, norm)
@@ -90,6 +121,7 @@ class TemporalTransformerDecoder(TransformerDecoder):
             output = self.norm(output)
 
         return output
+
 
 class TemporalTransformerDecoderLayer(TransformerDecoderLayer):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation=F.relu, layer_norm_eps=0.00001, batch_first=False, norm_first=False, device=None, dtype=None) -> None:

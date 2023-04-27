@@ -38,11 +38,12 @@
             "args": [
                 "--gpu_ids","1",
                 "--model","./model_zoo/099.pth",
-                "--data_dir","./data",
+                "--data_dir","./data/data",
                 "--experiment_name","debug",
                 "--model_type", "vanilla_transformer",//vanilla_transformer
                 "--gt_visibility",
-                "--decoder_layer_num","1"
+                "--decoder_layer_num","3",
+                "--encoder_layer_num","3"
             ]
         },
         {

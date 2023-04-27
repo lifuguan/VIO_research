@@ -12,4 +12,7 @@ python train.py --gpu_ids 1 --batch_size 16 --seq_len 11 --workers 48 --data_dir
 #test
 python test.py --gpu_ids 0 --seq_len 11 --data_dir ./data/data --experiment_name test --model_type transformer_emb --model ./results/full_transformer/checkpoints/best_4.72.pth
 
-#2023/4/27  decoder_layer为1，测试效果
+#2023/4/27  decoder_layer为1，测试效果(跑了1，3两个实验，结果1的好很多)
+
+#2023/4/27晚测试(只需要修改experiment_name和encoder_layer_num, 跑1，3吧。还有就是decoderlayer的数量，建议两个实验都选1，如果卡多3也可以跑一下，这样就是四个实验)
+python train.py --gpu_ids 1 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name encoderlayer_num_1 --model_type vanilla_transformer --decoder_layer_num 1/3 --encoder_layer_num 1/3
