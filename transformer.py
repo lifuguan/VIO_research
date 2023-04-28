@@ -100,7 +100,7 @@ class TemporalTransformerEncoder(TransformerEncoder):
     def forward(self, src: Tensor, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
         output = src
 
-        for mod in self.layers:
+        for i, mod in enumerate(self.layers):
             output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
 
         if self.norm is not None:

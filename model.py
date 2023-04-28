@@ -413,6 +413,7 @@ class DeepVIOVanillaTransformer(nn.Module):
             fused_feat = fused_feat.transpose(1, 0)
             target = target.transpose(1, 0)
         else:
+            src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
             target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
             fused_feat = fused_feat.transpose(1, 0)
 

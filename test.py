@@ -84,7 +84,7 @@ def main():
         model = DeepVIOTransformer(args)
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
-    DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    DEVICE = torch.device('cuda:{}'.format(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
     # model.load_state_dict(torch.load(args.model), strict=False)
     state_dict = torch.load(args.model, map_location=DEVICE)
     # 这是为了删除权重文件中多余网络参数而设置
