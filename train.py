@@ -33,7 +33,7 @@ parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='drop
 
 parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight decay for the optimizer')
 parser.add_argument('--batch_size', type=int, default=16, help='batch size')
-parser.add_argument('--seq_len', type=int, default=21, help='sequence length for LSTM')
+parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
 parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
 parser.add_argument('--epochs_joint', type=int, default=40, help='number of epochs for joint training')
@@ -61,6 +61,7 @@ parser.add_argument('--model_type', type=str, default='transformer_emb', help='t
 parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
 parser.add_argument('--only_encoder', default=False, action='store_true', help='')
 parser.add_argument('--with_src_mask', default=False, action='store_true', help='')
+parser.add_argument('--zero_input', default=False, action='store_true', help='')
 parser.add_argument('--decoder_layer_num', default=3, type=int, help='the number of transformer’s decoder layer')
 parser.add_argument('--encoder_layer_num', default=3, type=int, help='the number of transformer’s encoder layer')
 
@@ -89,7 +90,8 @@ if args.experiment_name != 'debug':
         "gt_visibility": args.gt_visibility,
         "encoder_layer_num": args.encoder_layer_num,
         "decoder_layer_num": args.decoder_layer_num,
-        "with_src_mask": args.with_src_mask
+        "with_src_mask": args.with_src_mask,
+        "zero_input": args.zero_input
         }
     )
 

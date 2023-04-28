@@ -18,4 +18,5 @@ python test.py --gpu_ids 0 --seq_len 11 --data_dir ./data/data --experiment_name
 python train.py --gpu_ids 0 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name debug --model_type vanilla_transformer --decoder_layer_num 3 --encoder_layer_num 3
 
 
-python train.py --gpu_ids 7 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name decoder1_with_mask --model_type vanilla_transformer --only_encoder --with_src_mask --encoder_layer_num 1
+python train.py --gpu_ids 7 --batch_size 16 --workers 48 --data_dir ./data --experiment_name decoder1_with_mask --model_type vanilla_transformer --only_encoder --with_src_mask --encoder_layer_num 1
+python train.py --gpu_ids 6 --batch_size 16 --workers 48 --data_dir ./data --experiment_name decoder1_zeroinput --model_type vanilla_transformer --only_encoder --zero_input --encoder_layer_num 1

@@ -391,11 +391,13 @@ class DeepVIOVanillaTransformer(nn.Module):
                                        dim_feedforward=512,  batch_first=True)
 
         self.generator = nn.Linear(self.latent_dim, 6) # 这里是6维
-        self.linear = nn.Linear(6, self.latent_dim) 
 
         self.gt_visibility = opt.gt_visibility
         self.with_src_mask = opt.with_src_mask
         self.only_encoder = opt.only_encoder
+        self.zero_input = opt.zero_input
+        if self.zero_input is not True:
+            self.linear = nn.Linear(6, self.latent_dim) 
         initialization(self)
 
     def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
@@ -415,7 +417,10 @@ class DeepVIOVanillaTransformer(nn.Module):
             target = target.transpose(1, 0)
         else:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
-            target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
+            if self.zero_input:
+                target = torch.zeros((seq_len, batch_size, 768), device=device)
+            else:
+                target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
             fused_feat = fused_feat.transpose(1, 0)
 
         pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
