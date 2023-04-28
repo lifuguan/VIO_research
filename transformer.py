@@ -2,6 +2,7 @@ import copy
 from typing import Optional, Any, Union, Callable
 import math
 
+import torch
 from torch import nn
 from torch import Tensor
 from torch.nn import functional as F
@@ -14,6 +15,26 @@ from torch.nn.modules.linear import Linear
 from torch.nn.modules.normalization import LayerNorm
 from torch.nn.modules.transformer import TransformerEncoder, TransformerEncoderLayer
 from torch.nn.modules.transformer import TransformerDecoder, TransformerDecoderLayer
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self,
+                 emb_size: int,
+                 dropout: float,
+                 maxlen: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        den = torch.exp(- torch.arange(0, emb_size, 2)* math.log(10000) / emb_size)
+        pos = torch.arange(0, maxlen).reshape(maxlen, 1)
+        pos_embedding = torch.zeros((maxlen, emb_size))
+        pos_embedding[:, 0::2] = torch.sin(pos * den)
+        pos_embedding[:, 1::2] = torch.cos(pos * den)
+        pos_embedding = pos_embedding.unsqueeze(-2)
+
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('pos_embedding', pos_embedding)
+
+    def forward(self, token_embedding: torch.Tensor):
+        return self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
 
 # helper Module to convert tensor of input indices into corresponding tensor of token embeddings
 class TokenEmbedding(nn.Module):
@@ -43,7 +64,11 @@ class TemporalTransformer(Module):
                                                  activation, layer_norm_eps, batch_first, norm_first,
                                                  **factory_kwargs)
         encoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.encoder = TemporalTransformerEncoder(encoder_layer, opt.encoder_layer_num, encoder_norm)
+        
+        if opt.per_pe:
+            self.encoder = TemporalTransformerEncoderWithPE(d_model, encoder_layer, opt.encoder_layer_num, encoder_norm)
+        else:
+            self.encoder = TemporalTransformerEncoder(encoder_layer, opt.encoder_layer_num, encoder_norm)
 
         decoder_layer = TemporalTransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout,
                                                 activation, layer_norm_eps, batch_first, norm_first,
@@ -96,11 +121,28 @@ class TemporalTransformerEncoderLayer(TransformerEncoderLayer):
 class TemporalTransformerEncoder(TransformerEncoder):
     def __init__(self, encoder_layer, num_layers, norm=None):
         super().__init__(encoder_layer, num_layers, norm)
-    
+        
     def forward(self, src: Tensor, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
         output = src
 
         for i, mod in enumerate(self.layers):
+            output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+
+        if self.norm is not None:
+            output = self.norm(output)
+        return output
+
+# Transformer with positional encoding in each layer
+class TemporalTransformerEncoderWithPE(TransformerEncoder):
+    def __init__(self, latent_dim, encoder_layer, num_layers, norm=None):
+        super().__init__(encoder_layer, num_layers, norm)
+        self.positional_encoding = PositionalEncoding(emb_size=latent_dim, dropout=0.1)
+        
+    def forward(self, src: Tensor, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+        output = src
+
+        for i, mod in enumerate(self.layers):
+            output = self.positional_encoding(output.transpose(1, 0)).transpose(1, 0)  
             output = mod(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
 
         if self.norm is not None:
