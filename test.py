@@ -41,6 +41,7 @@ parser.add_argument('--gt_visibility', action='store_true', help='')
 parser.add_argument('--only_encoder', action='store_true', help='')
 parser.add_argument('--decoder_layer_num', default=3, type=int, help='the number of transformer’s decoder layer')
 parser.add_argument('--encoder_layer_num', default=3, type=int, help='the number of transformer’s encoder layer')
+parser.add_argument('--with_src_mask', default=False, action='store_true', help='')
 
 
 args = parser.parse_args()

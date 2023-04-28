@@ -16,3 +16,6 @@ python test.py --gpu_ids 0 --seq_len 11 --data_dir ./data/data --experiment_name
 
 #2023/4/27晚测试(只需要修改experiment_name和encoder_layer_num, 跑1，3吧。还有就是decoderlayer的数量，建议两个实验都选1，如果卡多3也可以跑一下，这样就是四个实验)
 python train.py --gpu_ids 0 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name debug --model_type vanilla_transformer --decoder_layer_num 3 --encoder_layer_num 3
+
+
+python train.py --gpu_ids 7 --batch_size 16 --seq_len 11 --workers 48 --data_dir ./data --experiment_name decoder1_with_mask --model_type vanilla_transformer --only_encoder --with_src_mask --encoder_layer_num 1

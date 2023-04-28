@@ -394,6 +394,7 @@ class DeepVIOVanillaTransformer(nn.Module):
         self.linear = nn.Linear(6, self.latent_dim) 
 
         self.gt_visibility = opt.gt_visibility
+        self.with_src_mask = opt.with_src_mask
         self.only_encoder = opt.only_encoder
         initialization(self)
 
@@ -425,7 +426,11 @@ class DeepVIOVanillaTransformer(nn.Module):
 
         src_mask = torch.zeros((src_seq_len, src_seq_len),device=device).type(torch.bool)
 
-        memory = self.transformer.encoder(pos_fused_feat, src_mask, None)    # [10,16,768]
+        if self.with_src_mask:
+            memory = self.transformer.encoder(pos_fused_feat, tgt_mask, None)    # [10,16,768]
+        else:
+            memory = self.transformer.encoder(pos_fused_feat, src_mask, None)    # [10,16,768]
+
         if self.only_encoder is True:
             pose = self.generator(memory)
             return pose, history_out

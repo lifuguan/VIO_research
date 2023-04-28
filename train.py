@@ -60,6 +60,7 @@ parser.add_argument('--weighted', default=False, action='store_true', help='whet
 parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series, transformer_emb, originalDeepVIO]')
 parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
 parser.add_argument('--only_encoder', default=False, action='store_true', help='')
+parser.add_argument('--with_src_mask', default=False, action='store_true', help='')
 parser.add_argument('--decoder_layer_num', default=3, type=int, help='the number of transformer’s decoder layer')
 parser.add_argument('--encoder_layer_num', default=3, type=int, help='the number of transformer’s encoder layer')
 
@@ -87,7 +88,8 @@ if args.experiment_name != 'debug':
         "model_type": args.model_type,
         "gt_visibility": args.gt_visibility,
         "encoder_layer_num": args.encoder_layer_num,
-        "decoder_layer_num": args.decoder_layer_num
+        "decoder_layer_num": args.decoder_layer_num,
+        "with_src_mask": args.with_src_mask
         }
     )
 

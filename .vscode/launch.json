@@ -37,11 +37,11 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","./results/no_gt_in_test_1decode/checkpoints/099.pth",
+                "--model","./results/encoder_3/checkpoints/best_9.38.pth",
                 "--data_dir","./data",
                 "--experiment_name","debug",
                 "--model_type", "vanilla_transformer",//vanilla_transformer
-                "--decoder_layer_num","1",
+                "--only_encoder",
                 "--encoder_layer_num","3"
             ]
         },
