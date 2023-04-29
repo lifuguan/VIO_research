@@ -71,7 +71,7 @@ class TemporalTransformer(Module):
             self.encoder = TemporalTransformerEncoder(encoder_layer, opt.encoder_layer_num, encoder_norm)
 
         decoder_layer = TemporalTransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout,
-                                                activation, layer_norm_eps, batch_first, norm_first,
+                                                activation, layer_norm_eps, batch_first, norm_first, opt.cross_first,
                                                 **factory_kwargs)
         decoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
         self.decoder = TemporalTransformerDecoder(decoder_layer, opt.decoder_layer_num, decoder_norm)
@@ -166,23 +166,29 @@ class TemporalTransformerDecoder(TransformerDecoder):
 
 
 class TemporalTransformerDecoderLayer(TransformerDecoderLayer):
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation=F.relu, layer_norm_eps=0.00001, batch_first=False, norm_first=False, device=None, dtype=None) -> None:
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation=F.relu, layer_norm_eps=0.00001, batch_first=False, norm_first=False, 
+        cross_first=False, device=None, dtype=None) -> None:
         super().__init__(d_model, nhead, dim_feedforward, dropout, activation, layer_norm_eps, batch_first, norm_first, device, dtype)
         factory_kwargs = {'device': device, 'dtype': dtype}
         self.history_multihead_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
                                                  **factory_kwargs)
         self.history_dropout = Dropout(dropout)
 
+        self.cross_first = cross_first
+
     def forward(self, tgt: Tensor, memory: Tensor, history_out: Tensor = None, tgt_mask: Optional[Tensor] = None) -> Tensor:
         x = tgt
-        x = self.norm1(x + self._sa_block(x, attn_mask=tgt_mask, key_padding_mask=None))            
-        if history_out is None:  # 如果history_out不为None，利用额外的mha进行cross attention
+        if self.cross_first is True:
             x = self.norm2(x + self._mha_block(x, memory, None, None))
-        else:
-            x = self.norm2(x + self._mha_block(x, memory, None, None) + self._history_mha_block(x, history_out))
+            x = self.norm1(x + self._sa_block(x, attn_mask=tgt_mask, key_padding_mask=None))            
+        else:    
+            x = self.norm1(x + self._sa_block(x, attn_mask=tgt_mask, key_padding_mask=None))            
+            if history_out is None:  # 如果history_out不为None，利用额外的mha进行cross attention
+                x = self.norm2(x + self._mha_block(x, memory, None, None))
+            else:
+                x = self.norm2(x + self._mha_block(x, memory, None, None) + self._history_mha_block(x, history_out))
 
         x = self.norm3(x + self._ff_block(x))
-
         return x
 
     # multihead attention block for `history_out`

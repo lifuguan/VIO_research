@@ -44,6 +44,7 @@ parser.add_argument('--only_encoder', action='store_true', help='')
 parser.add_argument('--with_src_mask', default=False, action='store_true', help='')
 parser.add_argument('--zero_input', default=False, action='store_true', help='')
 parser.add_argument('--per_pe', default=False, action='store_true', help='')
+parser.add_argument('--cross_first', default=False, action='store_true', help='')
 
 args = parser.parse_args()
 

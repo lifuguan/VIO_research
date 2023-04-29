@@ -12,7 +12,7 @@ import numpy as np
 import wandb 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--data_dir', type=str, default='../Visual-Selective-VIO/data', help='path to the dataset')
+parser.add_argument('--data_dir', type=str, default='./data', help='path to the dataset')
 parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
 parser.add_argument('--save_dir', type=str, default='./results', help='path to save the result')
 
@@ -65,6 +65,8 @@ parser.add_argument('--only_encoder', default=False, action='store_true', help='
 parser.add_argument('--with_src_mask', default=False, action='store_true', help='')
 parser.add_argument('--zero_input', default=False, action='store_true', help='')
 parser.add_argument('--per_pe', default=False, action='store_true', help='')
+parser.add_argument('--cross_first', default=False, action='store_true', help='')
+
 
 args = parser.parse_args()
 
@@ -90,10 +92,12 @@ if args.experiment_name != 'debug':
         "model_type": args.model_type,
         "gt_visibility": args.gt_visibility,
         "encoder_layer_num": args.encoder_layer_num,
-        "decoder_layer_num": args.decoder_layer_num,
+        "decoder_layer_num": args.decoder_layer_num if args.only_encoder is False else 0,
+        "only_encoder": args.only_encoder,
         "with_src_mask": args.with_src_mask,
         "zero_input": args.zero_input,
-        "per_pe": args.per_pe
+        "per_pe": args.per_pe,
+        "cross_first": args.cross_first
         }
     )
 
