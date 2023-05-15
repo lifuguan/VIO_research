@@ -37,12 +37,36 @@
             "justMyCode": false,
             "args": [
                 "--gpu_ids","0",
-                "--model","./results/encoder_3/checkpoints/best_9.38.pth",
-                "--data_dir","./data",
+                "--model","./model_zoo/best_4.69_new.pth",
+                "--data_dir","./data/data",
                 "--experiment_name","debug",
                 "--model_type", "vanilla_transformer",//vanilla_transformer
                 "--only_encoder",
-                "--encoder_layer_num","3"
+                "--encoder_layer_num","1"
+            ]
+        },
+        {
+            "name": "train TransFusionOdom",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--gpu_ids","0",
+                "--batch_size","16",
+                "--data_dir","./data/data",
+                "--experiment_name","debug",
+                "--model", "transfusionodom",
+                "--seq_len","11",
+                "--encoder_layer_num","1",
+                "--decoder_layer_num","1",
+                "--only_encoder",
+                "--patch_size","16",
+                "--imu_height","256",
+                "--imu_width","512",//imu的插值大小不太合理，width应该小于height
+                "--per_pe"
+                //"--gt_visibility",
             ]
         },
         {
@@ -57,9 +81,11 @@
                 "--batch_size","16",
                 "--data_dir","./data/data",
                 "--experiment_name","debug",
-                "--model", "transformer_emb",
+                "--model", "vanilla_transformer",
                 "--seq_len","11",
-                
+                "--encoder_layer_num","3",
+                "--decoder_layer_num","3",
+                "--per_pe"
             ]
         },
         {

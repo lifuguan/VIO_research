@@ -9,6 +9,10 @@ from enum import Enum
 import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 import math
+import torch.nn.functional as F
+from scipy.signal import savgol_filter
+from torch import nn
+from einops import rearrange, repeat
 plt.switch_backend('agg')
 
 _EPS = np.finfo(float).eps * 4.0
@@ -238,7 +242,109 @@ def create_mask(src, tgt):
     tgt_mask = generate_square_subsequent_mask(tgt_seq_len, DEVICE)
     src_mask = torch.zeros((src_seq_len, src_seq_len),device=DEVICE).type(torch.bool)
     return src_mask, tgt_mask
-class State(Enum):
-    Training = 1
-    Inference = 2
-    is_first = 3
+
+def pair(t):
+    return t if isinstance(t, tuple) else (t, t)
+#针对imu预处理，去噪以及插值成为图像
+def pre_IMU(imus, target_height, target_width):
+    device = imus.device
+    imus = imus.to("cpu")
+    IMU_FREQ = 10
+    imu_data = imus
+    # 定义滤波器参数
+    window_length = 33  # 滑动窗口的长度
+    polyorder = 2  # 多项式拟合的阶数
+    # 对灰度图像应用Savitzky-Golay滤波器
+    imu_data = imu_data.T
+    imu_data = imu_data.numpy()
+    smoothed_image = np.zeros_like(imu_data)
+    for i in range(imu_data.shape[2]):
+        smoothed_image[:,:,i] = savgol_filter(imu_data[:,:,i], window_length, polyorder)
+
+    imu_data = imu_data.T
+    smoothed_image = smoothed_image.T
+    #对每一列进行归一化，其实就是同一类数据
+    min_vals = np.min(smoothed_image, axis=0)
+    max_vals = np.max(smoothed_image, axis=0)
+
+    normalized_data = (smoothed_image - min_vals) / (max_vals - min_vals)
+
+    normalized_data = normalized_data*255
+    # normalized_data.astype(np.uint8)
+    resized_image = torch.zeros((16, 10, 256, 512))
+    normalized_data = torch.from_numpy(normalized_data).to(device)
+    for i in range(normalized_data.shape[0]):
+        for j in range(10):
+            image = F.interpolate(normalized_data[i, j*IMU_FREQ:j*IMU_FREQ+11, :].unsqueeze(0).unsqueeze(0), size=(target_height, target_width), mode="bilinear", align_corners=False)
+            resized_image[i, j] = image.squeeze(0).squeeze(0)
+    
+    return resized_image
+
+#vit的transformer code
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fn = fn
+    def forward(self, x, **kwargs):
+        return self.fn(self.norm(x), **kwargs)
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = int(dim_head *  heads)
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+        return x

@@ -92,7 +92,7 @@ def main():
     state_dict = torch.load(args.model, map_location=DEVICE)
     # 这是为了删除权重文件中多余网络参数而设置
     # del state_dict['tgt_to_emb.embedding.weight']
-    model.load_state_dict(state_dict, strict=True)
+    model.load_state_dict(state_dict, strict=False)
 
     model.to(DEVICE)
     print('load model %s'%args.model)

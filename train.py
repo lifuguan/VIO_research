@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer, DeepVIOTransformer
+from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer, DeepVIOTransformer, TransFusionOdom
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -57,6 +57,9 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
 
+parser.add_argument('--patch_size', type=int, default=16, help='patch size')
+parser.add_argument('--imu_height', type=int, default=256, help='imu2image height size')
+parser.add_argument('--imu_width', type=int, default=512, help='imu2image width size')
 parser.add_argument('--model_type', type=str, default='transformer_emb', help='type of optimizer [vanilla_transformer, time_series, transformer_emb, originalDeepVIO]')
 parser.add_argument('--gt_visibility', default=False, action='store_true', help='')
 parser.add_argument('--decoder_layer_num', default=3, type=int, help='the number of transformer’s decoder layer')
@@ -66,6 +69,7 @@ parser.add_argument('--with_src_mask', default=False, action='store_true', help=
 parser.add_argument('--zero_input', default=False, action='store_true', help='')
 parser.add_argument('--per_pe', default=False, action='store_true', help='')
 parser.add_argument('--cross_first', default=False, action='store_true', help='')
+
 
 
 args = parser.parse_args()
@@ -97,7 +101,10 @@ if args.experiment_name != 'debug':
         "with_src_mask": args.with_src_mask,
         "zero_input": args.zero_input,
         "per_pe": args.per_pe,
-        "cross_first": args.cross_first
+        "cross_first": args.cross_first,
+        "patch_size": args.patch_size,
+        "imu_height": args.imu_height,
+        "imu_width": args.imu_width
         }
     )
 
@@ -234,6 +241,8 @@ def main():
         model = DeepVIO(args)
     elif args.model_type == 'transformer_emb':
         model = DeepVIOTransformer(args)
+    elif args.model_type == 'transfusionodom':
+        model = TransFusionOdom(args)
 
     # Continual training or not
     if args.pretrain is not None:
@@ -245,12 +254,12 @@ def main():
         logger.info('Training from scratch')
     
     # Use the pre-trained flownet or not
-    if args.pretrain_flownet and args.pretrain is None:
-        pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
-        model_dict = model.Feature_net.state_dict()
-        update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
-        model_dict.update(update_dict)
-        model.Feature_net.load_state_dict(model_dict)
+    # if args.pretrain_flownet and args.pretrain is None:
+    #     pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
+    #     model_dict = model.Feature_net.state_dict()
+    #     update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
+    #     model_dict.update(update_dict)
+    #     model.Feature_net.load_state_dict(model_dict)
 
     # Feed model to GPU
     model.cuda(gpu_ids[0])
@@ -289,7 +298,7 @@ def main():
         message = f'Epoch {ep} training finished, pose loss: {avg_pose_loss:.6f}, model saved'
         print(message)
         logger.info(message)
-        
+
         if ep > args.epochs_warmup+args.epochs_joint or (ep > args.epochs_warmup and ep % 2 == 0):
             # Evaluate the model
             print('Evaluating the model')

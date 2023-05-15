@@ -64,17 +64,16 @@ class TemporalTransformer(Module):
                                                  activation, layer_norm_eps, batch_first, norm_first,
                                                  **factory_kwargs)
         encoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        
-        if opt.per_pe:
-            self.encoder = TemporalTransformerEncoderWithPE(d_model, encoder_layer, opt.encoder_layer_num, encoder_norm)
-        else:
-            self.encoder = TemporalTransformerEncoder(encoder_layer, opt.encoder_layer_num, encoder_norm)
-
         decoder_layer = TemporalTransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout,
                                                 activation, layer_norm_eps, batch_first, norm_first, opt.cross_first,
                                                 **factory_kwargs)
         decoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.decoder = TemporalTransformerDecoder(decoder_layer, opt.decoder_layer_num, decoder_norm)
+        if opt.per_pe:
+            self.encoder = TemporalTransformerEncoderWithPE(d_model, encoder_layer, opt.encoder_layer_num, encoder_norm)
+            self.decoder = TemporalTransformerDecoderWithPE(d_model, decoder_layer, opt.decoder_layer_num, decoder_norm)
+        else:
+            self.encoder = TemporalTransformerEncoder(encoder_layer, opt.encoder_layer_num, encoder_norm)
+            self.decoder = TemporalTransformerDecoder(decoder_layer, opt.decoder_layer_num, decoder_norm)
 
         self._reset_parameters()
 
@@ -147,6 +146,23 @@ class TemporalTransformerEncoderWithPE(TransformerEncoder):
 
         if self.norm is not None:
             output = self.norm(output)
+        return output
+
+class TemporalTransformerDecoderWithPE(TransformerDecoder):
+    def __init__(self, latent_dim, decoder_layer, num_layers, norm=None):
+        super().__init__(decoder_layer, num_layers, norm)
+        self.positional_encoding = PositionalEncoding(emb_size=latent_dim, dropout=0.1)
+        
+    def forward(self, tgt: Tensor, memory: Tensor, history_out: Tensor = None, tgt_mask: Optional[Tensor] = None) -> Tensor:
+        output = tgt
+
+        for i, mod in enumerate(self.layers):
+            output = self.positional_encoding(output.transpose(1, 0)).transpose(1, 0)
+            output = mod(output, memory, history_out, tgt_mask)  # 传入history_out
+
+        if self.norm is not None:
+            output = self.norm(output)
+
         return output
 
 class TemporalTransformerDecoder(TransformerDecoder):

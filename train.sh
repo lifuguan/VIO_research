@@ -32,3 +32,9 @@ python train.py --gpu_ids 5 --workers 48 --experiment_name mask_cross_first --mo
 
 python train.py --gpu_ids 4 --workers 48 --experiment_name zero_mask_cross_first --model_type vanilla_transformer --encoder_layer_num 1 --decoder_layer_num 1 --with_src_mask --cross_first --zero_input
 
+#2023/5/10
+#采取like dino的方式，在decoder mask attention部分tgt也改为memory
+python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 12 --experiment_name tgt=memory --model_type vanilla_transformer --encoder_layer_num 1 --decoder_layer_num 1 --per_pe #--with_src_mask False --cross_first False,其他参数都是false
+python test.py --gpu_ids 0 --seq_len 11 --data_dir ./data/data --experiment_name test --model_type vanilla_transformer --model ./results/tgt=memory/checkpoints/071.pth --val_seq 00
+#验证1，1是否过拟合？模型复杂能否缓解  在训练集上特别差，在测试集上反而好。。。
+python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 12 --experiment_name tgt=memory --model_type vanilla_transformer --encoder_layer_num 3 --decoder_layer_num 3 --per_pe #--with_src_mask False --cross_first False,其他参数都是false
