@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer, DeepVIOTransformer
+from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer, DeepVIOTransformer, TransFusionOdom
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -45,6 +45,10 @@ parser.add_argument('--with_src_mask', default=False, action='store_true', help=
 parser.add_argument('--zero_input', default=False, action='store_true', help='')
 parser.add_argument('--per_pe', default=False, action='store_true', help='')
 parser.add_argument('--cross_first', default=False, action='store_true', help='')
+parser.add_argument('--out_dim', type=int, default=64, help='vit each patch feature dim')
+parser.add_argument('--patch_size', type=int, default=16, help='patch size')
+parser.add_argument('--imu_height', type=int, default=256, help='imu2image height size')
+parser.add_argument('--imu_width', type=int, default=512, help='imu2image width size')
 
 args = parser.parse_args()
 
@@ -87,6 +91,8 @@ def main():
         model = DeepVIOTransformer(args)
     elif args.model_type == 'originalDeepVIO':
         model = DeepVIO(args)
+    elif args.model_type == 'transfusionodom':
+        model = TransFusionOdom(args)
     DEVICE = torch.device('cuda:{}'.format(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
     # model.load_state_dict(torch.load(args.model), strict=False)
     state_dict = torch.load(args.model, map_location=DEVICE)

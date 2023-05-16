@@ -38,3 +38,8 @@ python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 
 python test.py --gpu_ids 0 --seq_len 11 --data_dir ./data/data --experiment_name test --model_type vanilla_transformer --model ./results/tgt=memory/checkpoints/071.pth --val_seq 00
 #验证1，1是否过拟合？模型复杂能否缓解  在训练集上特别差，在测试集上反而好。。。
 python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 12 --experiment_name tgt=memory --model_type vanilla_transformer --encoder_layer_num 3 --decoder_layer_num 3 --per_pe #--with_src_mask False --cross_first False,其他参数都是false
+
+#加入vit融合部分
+python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 8 --experiment_name like_vit_fusion --model_type transfusionodom --encoder_layer_num 1 --decoder_layer_num 1 --only_encoder --patch_size 64 --imu_height 256 --imu_width 512 --out_dim 128 #--with_src_mask False --cross_first False,其他参数都是false
+#上一个对照试验，只有一层encoder没有transfusion的融合部分，还是之前的方法
+python train.py --gpu_ids 1 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 8 --experiment_name only_encoder_no_transfusion --model_type vanilla_transformer --encoder_layer_num 1 --decoder_layer_num 1 --only_encoder --patch_size 0 --imu_height 0 --imu_width 0 --out_dim 0 #--with_src_mask False --cross_first False,其他参数都是false

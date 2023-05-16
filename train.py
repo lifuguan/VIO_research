@@ -69,6 +69,7 @@ parser.add_argument('--with_src_mask', default=False, action='store_true', help=
 parser.add_argument('--zero_input', default=False, action='store_true', help='')
 parser.add_argument('--per_pe', default=False, action='store_true', help='')
 parser.add_argument('--cross_first', default=False, action='store_true', help='')
+parser.add_argument('--out_dim', type=int, default=64, help='vit each patch feature dim')
 
 
 
@@ -104,7 +105,8 @@ if args.experiment_name != 'debug':
         "cross_first": args.cross_first,
         "patch_size": args.patch_size,
         "imu_height": args.imu_height,
-        "imu_width": args.imu_width
+        "imu_width": args.imu_width,
+        "out_dim": args.out_dim
         }
     )
 
@@ -254,12 +256,12 @@ def main():
         logger.info('Training from scratch')
     
     # Use the pre-trained flownet or not
-    # if args.pretrain_flownet and args.pretrain is None:
-    #     pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
-    #     model_dict = model.Feature_net.state_dict()
-    #     update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
-    #     model_dict.update(update_dict)
-    #     model.Feature_net.load_state_dict(model_dict)
+    if args.pretrain_flownet and args.pretrain is None:
+        pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
+        model_dict = model.Feature_net.state_dict()
+        update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
+        model_dict.update(update_dict)
+        model.Feature_net.load_state_dict(model_dict)
 
     # Feed model to GPU
     model.cuda(gpu_ids[0])

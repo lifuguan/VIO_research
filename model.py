@@ -10,6 +10,7 @@ from utils.utils import pair, pre_IMU, Transformer
 import torchvision.models as models
 from PIL import Image
 from einops.layers.torch import Rearrange
+from torch.nn.init import kaiming_normal_, constant_
 
 from utils.utils import create_mask, generate_square_subsequent_mask
 
@@ -28,6 +29,19 @@ def conv(batchNorm, in_planes, out_planes, kernel_size=3, stride=1, dropout=0):
             nn.Dropout(dropout)  # , inplace=True)
         )
 
+def deconv(in_planes, out_planes):
+    return nn.Sequential(
+        nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1, bias=False),
+        nn.LeakyReLU(0.1,inplace=True)
+    )
+def predict_flow(in_planes):
+    return nn.Conv2d(in_planes,2,kernel_size=3,stride=1,padding=1,bias=False)
+
+def crop_like(input, target):
+    if input.size()[2:] == target.size()[2:]:
+        return input
+    else:
+        return input[:, :, :target.size(2), :target.size(3)]
 # The inertial encoder for raw imu data
 class Inertial_encoder(nn.Module):
     def __init__(self, opt):
@@ -57,49 +71,140 @@ class Inertial_encoder(nn.Module):
         out = self.proj(x.view(x.shape[0], -1))                   # out: (N x seq_len, 256)
         return out.view(batch_size, seq_len, 256)
 
+class flownet(nn.Module):
+    def __init__(self, batchNorm=True):
+        super(flownet, self).__init__()
+        # CNN
+        self.batchNorm = batchNorm
+        self.conv1 = conv(True, 6, 64, kernel_size=7, stride=2, dropout=0.2)
+        self.conv2 = conv(True, 64, 128, kernel_size=5, stride=2, dropout=0.2)
+        self.conv3 = conv(True, 128, 256, kernel_size=5, stride=2, dropout=0.2)
+        self.conv3_1 = conv(True, 256, 256, kernel_size=3, stride=1, dropout=0.2)
+        self.conv4 = conv(True, 256, 512, kernel_size=3, stride=2, dropout=0.2)
+        self.conv4_1 = conv(True, 512, 512, kernel_size=3, stride=1, dropout=0.2)
+        self.conv5 = conv(True, 512, 512, kernel_size=3, stride=2, dropout=0.2)
+        self.conv5_1 = conv(True, 512, 512, kernel_size=3, stride=1, dropout=0.2)
+        self.conv6 = conv(True, 512, 1024, kernel_size=3, stride=2, dropout=0.5)
+        
+        self.deconv5 = deconv(1024,512)
+        self.deconv4 = deconv(1026,256)
+        self.deconv3 = deconv(770,128)
+        self.deconv2 = deconv(386,64)
+
+        self.predict_flow6 = predict_flow(1024)
+        self.predict_flow5 = predict_flow(1026)
+        self.predict_flow4 = predict_flow(770)
+        self.predict_flow3 = predict_flow(386)
+        self.predict_flow2 = predict_flow(194)
+        
+        self.upsampled_flow6_to_5 = nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=False)
+        self.upsampled_flow5_to_4 = nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=False)
+        self.upsampled_flow4_to_3 = nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=False)
+        self.upsampled_flow3_to_2 = nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=False)
+        
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                kaiming_normal_(m.weight, 0.1)
+                if m.bias is not None:
+                    constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                constant_(m.weight, 1)
+                constant_(m.bias, 0)
+        
+        
+    def forward(self, v):
+        # batch_size, seq_len, img_channel, image_height, image_width = img.shape
+        batch_size, img_channel, image_height, image_width = v.shape
+        v = self.encode_image(v) #[16,6,64,128]
+        # out = []
+        out = F.interpolate(v, (image_height,image_width),mode='bilinear') #[16,6,256,512]
+        return out
+    def encode_image(self, x):
+        out_conv2 = self.conv2(self.conv1(x))
+        out_conv3 = self.conv3_1(self.conv3(out_conv2))
+        out_conv4 = self.conv4_1(self.conv4(out_conv3))
+        out_conv5 = self.conv5_1(self.conv5(out_conv4))
+        out_conv6 = self.conv6(out_conv5)
+        
+        flow6       = self.predict_flow6(out_conv6)
+        flow6_up    = crop_like(self.upsampled_flow6_to_5(flow6), out_conv5)
+        out_deconv5 = crop_like(self.deconv5(out_conv6), out_conv5)
+
+        concat5 = torch.cat((out_conv5,out_deconv5,flow6_up),1)
+        flow5       = self.predict_flow5(concat5)
+        flow5_up    = crop_like(self.upsampled_flow5_to_4(flow5), out_conv4)
+        out_deconv4 = crop_like(self.deconv4(concat5), out_conv4)
+
+        concat4 = torch.cat((out_conv4,out_deconv4,flow5_up),1)
+        flow4       = self.predict_flow4(concat4)
+        flow4_up    = crop_like(self.upsampled_flow4_to_3(flow4), out_conv3)
+        out_deconv3 = crop_like(self.deconv3(concat4), out_conv3)
+
+        concat3 = torch.cat((out_conv3,out_deconv3,flow4_up),1)
+        flow3       = self.predict_flow3(concat3)
+        flow3_up    = crop_like(self.upsampled_flow3_to_2(flow3), out_conv2)
+        out_deconv2 = crop_like(self.deconv2(concat3), out_conv2)
+
+        concat2 = torch.cat((out_conv2,out_deconv2,flow3_up),1)
+        flow2 = self.predict_flow2(concat2)
+        
+        return flow2 #[16,2,64,128]
+        
+
 class VisualIMUEncoder(nn.Module):
     def __init__(self, opt):
         super(VisualIMUEncoder, self).__init__()
         # CNN
         self.opt = opt
-        self.patch_height, self.patch_width = pair(opt.patch_size)
+        self.conv1 = conv(True, 6, 64, kernel_size=7, stride=2, dropout=0.2)
+        self.conv2 = conv(True, 64, 128, kernel_size=5, stride=2, dropout=0.2)
+        self.conv3 = conv(True, 128, 256, kernel_size=5, stride=2, dropout=0.2)
+        self.conv3_1 = conv(True, 256, 256, kernel_size=3, stride=1, dropout=0.2)
+        self.conv4 = conv(True, 256, 512, kernel_size=3, stride=2, dropout=0.2)
+        self.conv4_1 = conv(True, 512, 512, kernel_size=3, stride=1, dropout=0.2)
+        self.conv5 = conv(True, 512, 512, kernel_size=3, stride=2, dropout=0.2)
+        self.conv5_1 = conv(True, 512, 512, kernel_size=3, stride=1, dropout=0.2)
+        self.conv6 = conv(True, 512, 1024, kernel_size=3, stride=2, dropout=0.5)
+        # Comput the shape based on diff image size
+        __tmp = Variable(torch.zeros(1, 6, opt.img_w, opt.img_h))
+        __tmp = self.encode_image(__tmp)
+
+        self.visual_head = nn.Linear(int(np.prod(__tmp.size())), opt.v_f_len)
+        self.inertial_encoder = Inertial_encoder(opt)
+        # self.patch_height, self.patch_width = pair(opt.patch_size)
         # img_resnet = models.resnet34(pretrained=True)
         # img_resnet = nn.Sequential(*list(img_resnet.children())[:-1])#移除最后一层全连接
         # self.img_resnet34 = img_resnet
         
-        self.out_dim = 768
-        img_channel = 3
-        imu_patch_dim = img_channel * self.patch_height * self.patch_width
-        self.img_patch_embedding = nn.Sequential(
-            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
-            nn.LayerNorm(imu_patch_dim),
-            nn.Linear(imu_patch_dim, self.out_dim),
-            nn.LayerNorm(self.out_dim),
-        )
-        imu_channel = 1
-        imu_patch_dim = imu_channel * self.patch_height * self.patch_width
-        self.img_patch_embedding = nn.Sequential(
-            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
-            nn.LayerNorm(imu_patch_dim),
-            nn.Linear(imu_patch_dim, self.out_dim),
-            nn.LayerNorm(self.out_dim),
-        )
+        # self.out_dim = 768
+        # # img_channel = 3
+        # imu_patch_dim = img_channel * self.patch_height * self.patch_width
+        # self.img_patch_embedding = nn.Sequential(
+        #     Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
+        #     nn.LayerNorm(imu_patch_dim),
+        #     nn.Linear(imu_patch_dim, self.out_dim),
+        #     nn.LayerNorm(self.out_dim),
+        # )
+        # imu_channel = 1
+        # imu_patch_dim = imu_channel * self.patch_height * self.patch_width
+        # self.img_patch_embedding = nn.Sequential(
+        #     Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
+        #     nn.LayerNorm(imu_patch_dim),
+        #     nn.Linear(imu_patch_dim, self.out_dim),
+        #     nn.LayerNorm(self.out_dim),
+        # )
         
         # imu_resnet = models.resnet18(pretrained=True)
         # imu_resnet = nn.Sequential(*list(imu_resnet.children())[:-1])#移除最后一层全连接
         # self.imu_resnet18 = imu_resnet
 
-    def forward(self, img, imu, img_dim, imu_dim):
+    def forward(self, img, imu):
         # batch_size, seq_len, img_channel, image_height, image_width = img.shape
         v = torch.cat((img[:, :-1], img[:, 1:]), dim=2) # 构建 t->t+1 对
         batch_size, seq_len, img_channel, image_height, image_width = v.shape
         # for i in range(seq_len):
         #     img_feature[i] = self.img_resnet34(v[:,i,:,:,:])
         # f = self.img_resnet34(img[:,0,:,:,:])
-        
-        
-        
-    
         
         # #提取视觉特征
         # self.img_resnet34.eval()
@@ -120,6 +225,7 @@ class VisualIMUEncoder(nn.Module):
         # IMU CNN
         imu = torch.cat([imu[:, i * 10:i * 10 + 11, :].unsqueeze(1) for i in range(seq_len)], dim=1)
         imu = self.inertial_encoder(imu)
+        
         return v, imu
 
     def encode_image(self, x):
@@ -401,22 +507,23 @@ class TransFusionOdom(nn.Module):
         # imu_resnet = models.resnet18(pretrained=True)
         # imu_resnet = nn.Sequential(*list(imu_resnet.children())[:-1])#移除最后一层全连接
         # self.imu_resnet18 = imu_resnet
-        img_channel = 6
+        img_channel = 2   #光流是2，图片是3
         assert self.opt.img_h % self.patch_height == 0 and self.opt.img_w % self.patch_width == 0, 'Image dimensions must be divisible by the patch size.'
         assert self.opt.imu_height % self.patch_height == 0 and self.opt.imu_width % self.patch_width == 0, 'IMU2image dimensions must be divisible by the patch size.'
+        
         self.img_num_patches = (self.opt.img_h // self.patch_height) * (self.opt.img_w // self.patch_width)
         self.imu_num_patches = (self.opt.imu_height // self.patch_height) * (self.opt.imu_width // self.patch_width)
         img_patch_dim = img_channel * self.patch_height * self.patch_width
-        self.out_dim = 768
         
-        imu_patch_dim = img_channel * self.patch_height * self.patch_width
+        self.out_dim = self.opt.out_dim
+        imu_channel = 1
+        imu_patch_dim = imu_channel * self.patch_height * self.patch_width
         self.img_patch_embedding = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
             nn.LayerNorm(img_patch_dim),
             nn.Linear(img_patch_dim, self.out_dim),
             nn.LayerNorm(self.out_dim),
         )
-        imu_channel = 1
         imu_patch_dim = imu_channel * self.patch_height * self.patch_width
         #img采用可学习的
         self.imu_patch_embedding = nn.Sequential(
@@ -432,40 +539,57 @@ class TransFusionOdom(nn.Module):
         #fusion transformer
         self.transformer_fusion = Transformer(self.out_dim, 1, 8, self.out_dim / 8, self.out_dim, 0.1)
         #inference transformer encoder
+        self.gt_visibility = opt.gt_visibility
+        self.with_src_mask = opt.with_src_mask
+        self.only_encoder = opt.only_encoder
+        self.zero_input = opt.zero_input
+        self.feature_dim = (self.imu_num_patches + self.img_num_patches) * self.out_dim  #进入transformer的维度
+        if self.zero_input is not True:
+            self.linear = nn.Linear(6, self.feature_dim) 
         self.transformer = TemporalTransformer(opt, 
-                                       d_model=self.out_dim,
+                                       d_model=self.feature_dim,
                                        nhead=8, 
                                        num_encoder_layers=opt.encoder_layer_num, 
                                        num_decoder_layers=opt.decoder_layer_num, dropout=0.1, 
                                        dim_feedforward=512,  batch_first=True)#dim_feedforward可以改，一般大于out_dim
+        self.generator = nn.Linear(self.feature_dim, 6) # 这里是6维
+        self.positional_encoding = PositionalEncoding(emb_size=self.feature_dim, dropout=0.1)
+        #计算光流
+        self.Feature_net = flownet()#输出[16,2,64,128]
         initialization(self)
 
     def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
         v = torch.cat((img[:, :-1], img[:, 1:]), dim=2) # 构建 t->t+1 对
-        device = v.device
-        batch_size, seq_len, img_channel, image_height, image_width = v.shape
+        device = img.device
+        flow = []
+        for i in range(v.shape[1]):
+            flow.append(self.Feature_net(v[:,i,:,:,:]).tolist())
+        flow = torch.Tensor(flow).to(device).transpose(1,0)
+        batch_size, seq_len, img_channel, image_height, image_width = flow.shape
         imu2image = pre_IMU(imu, self.opt.imu_height, self.opt.imu_width)#b,q,h,w
         imu2image = imu2image.unsqueeze(2).to(device)#b,q,c=1,h,w
         img_patch_feature = torch.zeros((batch_size, seq_len, self.img_num_patches, self.out_dim)).to(device)
         imu_patch_feature = torch.zeros((batch_size, seq_len, self.imu_num_patches, self.out_dim)).to(device)
         
         for i in range(seq_len):
-            img_patch_feature[:,i,:,:] = self.img_patch_embedding(v[:,i,:,:,:])
-            img_patch_feature[:,i,:,:]+= self.img_pos_embedding
+            img_patch_feature[:,i,:,:] = self.img_patch_embedding(flow[:,i,:,:,:])
+            img_patch_feature[:,i,:,:]+= self.img_pos_embedding[:batch_size]
             img_patch_feature[:,i,:,:] = self.dropout(img_patch_feature[:,i,:,:])
             
-            imu_patch_feature[:,i,:,:] = self.imu_patch_embedding(imu2image[:,i,:,:,:])
-            imu_patch_feature[:,i,:,:]+= self.imu_pos_embedding
-            imu_patch_feature[:,i,:,:] = self.dropout(imu_patch_feature[:,i,:,:])
+            imu_patch_feature[:,i,:,:] = self.imu_patch_embedding(imu2image[:batch_size,i,:,:,:])
+            imu_patch_feature[:,i,:,:]+= self.imu_pos_embedding[:batch_size]
+            imu_patch_feature[:,i,:,:] = self.dropout(imu_patch_feature[:batch_size,i,:,:])
         #--这是patch=16的结果--img_feature [16,10,512,768] imu同样维度
         
         all_feature = torch.cat((img_patch_feature, imu_patch_feature), dim=2)
         out_feature = torch.zeros_like(all_feature).to(device)
+        fused_feat = torch.zeros((batch_size, seq_len, out_feature.shape[2]*out_feature.shape[3])).to(device)
         for i in range(seq_len):
             out_feature[:,i,:,:] = self.transformer_fusion(all_feature[:,i,:,:])
+            fused_feat[:,i,:] = torch.flatten(out_feature[:,i,:,:], start_dim=1)
         #跟以前一样
-        fused_feat = out_feature
         src_seq_len = seq_len
+        feature_dim = fused_feat.shape[2]
         if self.gt_visibility is True:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
             target = self.linear(gt_pose)
@@ -475,7 +599,7 @@ class TransFusionOdom(nn.Module):
         else:
             src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
             if self.zero_input:
-                target = torch.zeros((seq_len, batch_size, 768), device=device)
+                target = torch.zeros((seq_len, batch_size, self.feature_dim), device=device)
             else:
                 target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
             fused_feat = fused_feat.transpose(1, 0)
@@ -533,7 +657,7 @@ class DeepVIOVanillaTransformer(nn.Module):
         #[16, 101, 6]
         
         device = fv.device
-        batch_size, seq_len, image_height, image_width = fv.shape[0], fv.shape[1]
+        batch_size, seq_len = fv.shape[0], fv.shape[1]
 
         fused_feat = self.fuse_net(fv, fi)
         src_seq_len = fused_feat.shape[1]

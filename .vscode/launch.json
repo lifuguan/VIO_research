@@ -62,10 +62,12 @@
                 "--encoder_layer_num","1",
                 "--decoder_layer_num","1",
                 "--only_encoder",
-                "--patch_size","16",
+                "--patch_size","64",
+                "--workers", "8",
                 "--imu_height","256",
                 "--imu_width","512",//imu的插值大小不太合理，width应该小于height
-                "--per_pe"
+                "--per_pe",
+                "--out_dim", "128"
                 //"--gt_visibility",
             ]
         },
