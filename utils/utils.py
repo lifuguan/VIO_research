@@ -271,7 +271,7 @@ def pre_IMU(imus, target_height, target_width):
 
     normalized_data = normalized_data*255
     # normalized_data.astype(np.uint8)
-    resized_image = torch.zeros((16, 10, 256, 512))
+    resized_image = torch.zeros((16, 10, target_height, target_width))
     normalized_data = torch.from_numpy(normalized_data).to(device)
     for i in range(normalized_data.shape[0]):
         for j in range(10):

@@ -10,6 +10,7 @@ from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
 import wandb 
+torch.autograd.set_detect_anomaly(True)
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--data_dir', type=str, default='./data', help='path to the dataset')
