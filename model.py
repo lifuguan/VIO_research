@@ -531,9 +531,9 @@ class TransFusionOdom(nn.Module):
             nn.LayerNorm(imu_patch_dim),
             nn.Linear(imu_patch_dim, self.out_dim),
             nn.LayerNorm(self.out_dim),
-        )
-        self.img_pos_embedding = nn.Parameter(torch.randn(self.opt.batch_size, self.img_num_patches, self.out_dim))
-        self.imu_pos_embedding = nn.Parameter(torch.randn(self.opt.batch_size, self.imu_num_patches, self.out_dim))
+        )# self.opt.batch_size
+        self.img_pos_embedding = nn.Parameter(torch.randn(16, self.img_num_patches, self.out_dim))
+        self.imu_pos_embedding = nn.Parameter(torch.randn(16, self.imu_num_patches, self.out_dim))
         self.dropout = nn.Dropout(p=0.1)
         # 没必要对imu加入位置编码吧
         # self.imu_pos_embedding = PositionalEncoding(emb_size=self.out_dim, dropout=0.1)
@@ -583,7 +583,6 @@ class TransFusionOdom(nn.Module):
         imu2image = imu2image.unsqueeze(2).to(device)#b,q,c=1,h,w
         img_patch_feature = torch.zeros((batch_size, seq_len, self.img_num_patches, self.out_dim)).to(device)
         imu_patch_feature = torch.zeros((batch_size, seq_len, self.imu_num_patches, self.out_dim)).to(device)
-        
         for i in range(seq_len):
             img_patch_feature[:,i,:,:] = self.img_patch_embedding(flow[:,i,:,:,:])
             img_patch_feature[:,i,:,:] = img_patch_feature[:,i,:,:] + self.img_pos_embedding[:batch_size]

@@ -251,6 +251,7 @@ def pre_IMU(imus, target_height, target_width):
     imus = imus.to("cpu")
     IMU_FREQ = 10
     imu_data = imus
+    length = imus.shape[1]
     # 定义滤波器参数
     window_length = 33  # 滑动窗口的长度
     polyorder = 2  # 多项式拟合的阶数
@@ -264,9 +265,14 @@ def pre_IMU(imus, target_height, target_width):
     imu_data = imu_data.T
     smoothed_image = smoothed_image.T
     #对每一列进行归一化，其实就是同一类数据
-    min_vals = np.min(smoothed_image, axis=0)
-    max_vals = np.max(smoothed_image, axis=0)
-
+    min_vals = np.min(smoothed_image, axis=1)
+    max_vals = np.max(smoothed_image, axis=1)
+    # 在第二个维度上插入101个元素，扩展为维度 (16, 101, 6)
+    min_vals = np.expand_dims(min_vals, axis=1)
+    min_vals = np.tile(min_vals, (1, 101, 1))
+    max_vals = np.expand_dims(max_vals, axis=1)
+    max_vals = np.tile(max_vals, (1, 101, 1))
+    #测试的时候这里是0？  train [16 101 6]   [16 6]
     normalized_data = (smoothed_image - min_vals) / (max_vals - min_vals)
 
     normalized_data = normalized_data*255

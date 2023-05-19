@@ -62,12 +62,38 @@
                 "--encoder_layer_num","1",
                 "--decoder_layer_num","1",
                 "--only_encoder",
-                "--patch_size","64",
+                "--patch_size","16",
                 "--workers", "8",
                 "--imu_height","256",
                 "--imu_width","512",//imu的插值大小不太合理，width应该小于height
                 "--per_pe",
                 "--out_dim", "128"
+                //"--gt_visibility",
+            ]
+        },
+        {
+            "name": "test TransFusionOdom",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--gpu_ids","0",
+                "--data_dir","./data/data",
+                "--experiment_name","debug",
+                "--model_type", "transfusionodom",
+                "--seq_len","11",
+                "--encoder_layer_num","1",
+                "--decoder_layer_num","1",
+                "--only_encoder",
+                "--patch_size","16",
+                "--workers", "8",
+                "--imu_height","256",
+                "--imu_width","512",//imu的插值大小不太合理，width应该小于height
+                "--per_pe",
+                "--out_dim", "128",
+                "--model","./results/fusion_image_vit_fix_imu2image_bug/checkpoints/050_copy.pth"
                 //"--gt_visibility",
             ]
         },

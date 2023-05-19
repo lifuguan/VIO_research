@@ -89,6 +89,10 @@ class KITTI_tester():
                     pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq, ys=ys)
                     ys = pose[-1].unsqueeze(0)
                     pose_list.append(pose.transpose(1,0)[0,:,:].detach().cpu().numpy())
+                elif self.args.model_type == "transfusionodom":
+                    pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq)
+                    ys = pose[-1].unsqueeze(0)
+                    pose_list.append(pose[0,:,:].detach().cpu().numpy())
                 else:
                     pose, history_out = net(x_in, i_in, is_training=False, history_out=history_out, selection=selection, gt_pose=gt_seq)
                     pose_list.append(pose[0,:,:].detach().cpu().numpy())

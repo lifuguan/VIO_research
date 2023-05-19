@@ -44,6 +44,6 @@ python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 
 #上一个对照试验，只有一层encoder没有transfusion的融合部分，还是之前的方法
 python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 8 --experiment_name only_encoder_no_transfusion --model_type vanilla_transformer --encoder_layer_num 1 --decoder_layer_num 1 --only_encoder --patch_size 0 --imu_height 0 --imu_width 0 --out_dim 0 #--with_src_mask False --cross_first False,其他参数都是false
 #debug
-python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 4 --experiment_name debug --model_type transfusionodom --encoder_layer_num 1 --decoder_layer_num 1 --only_encoder --patch_size 32 --imu_height 256 --imu_width 512 --out_dim 128 #--with_src_mask False --cross_first False,其他参数都是false
+python train.py --gpu_ids 2 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 8 --experiment_name fusion_image_vit_fix_imu2image_bug --model_type transfusionodom --encoder_layer_num 1 --decoder_layer_num 1 --only_encoder --patch_size 16 --imu_height 256 --imu_width 512 --out_dim 128 #--with_src_mask False --cross_first False,其他参数都是false
 #修改imu图像尺寸更加合理
 python train.py --gpu_ids 0 --data_dir ./data/data --seq_len 11 --batch_size 16 --workers 12 --experiment_name like_vit_fusion_imusize --model_type transfusionodom --encoder_layer_num 1 --decoder_layer_num 1 --only_encoder --patch_size 64 --imu_height 256 --imu_width 128 --out_dim 128 #--with_src_mask False --cross_first False,其他参数都是false
