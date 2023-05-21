@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer, DeepVIOTransformer, TransFusionOdom
+from model import DeepVIO, DeepVIO2, DeepVIOOldTransformer, DeepVIOVanillaTransformer, DeepVIOTransformer, TransFusionOdom, TransFusionOdom_CNN
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -93,6 +93,8 @@ def main():
         model = DeepVIO(args)
     elif args.model_type == 'transfusionodom':
         model = TransFusionOdom(args)
+    elif args.model_type == 'transfusionodom_cnn':
+        model = TransFusionOdom_CNN(args)
     DEVICE = torch.device('cuda:{}'.format(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
     model.load_state_dict(torch.load(args.model), strict=False)
     # state_dict = torch.load(args.model, map_location=DEVICE)

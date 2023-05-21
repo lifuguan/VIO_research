@@ -98,6 +98,32 @@
             ]
         },
         {
+            "name": "train CNN_TransFusionOdom",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--gpu_ids","1",
+                "--batch_size","16",
+                "--data_dir","./data/data",
+                "--experiment_name","debug",
+                "--model", "transfusionodom_cnn",
+                "--seq_len","11",
+                "--encoder_layer_num","1",
+                "--decoder_layer_num","1",
+                "--only_encoder",
+                "--patch_size","16",
+                "--workers", "8",
+                "--imu_height","256",
+                "--imu_width","512",//imu的插值大小不太合理，width应该小于height
+                "--per_pe",
+                "--out_dim", "128"
+                //"--gt_visibility",
+            ]
+        },
+        {
             "name": "train_encoder+decoder",
             "type": "python",
             "request": "launch",

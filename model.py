@@ -6,13 +6,15 @@ import numpy as np
 import torch.nn.functional as F
 import math
 from transformer import TemporalTransformer, TokenEmbedding, PositionalEncoding
-from utils.utils import pair, pre_IMU, Transformer
+from utils.utils import pair, pre_IMU, Transformer, ImageCNN, normalize_imagenet, IMUEncoder, SelfAttention, Block, GPT, Encoder
+from utils import config
 import torchvision.models as models
 from PIL import Image
 from einops.layers.torch import Rearrange
 from torch.nn.init import kaiming_normal_, constant_
 
 from utils.utils import create_mask, generate_square_subsequent_mask
+config = config.GlobalConfig()
 
 def conv(batchNorm, in_planes, out_planes, kernel_size=3, stride=1, dropout=0):
     if batchNorm:
@@ -581,6 +583,147 @@ class TransFusionOdom(nn.Module):
         batch_size, seq_len, img_channel, image_height, image_width = flow.shape
         imu2image = pre_IMU(imu, self.opt.imu_height, self.opt.imu_width)#b,q,h,w
         imu2image = imu2image.unsqueeze(2).to(device)#b,q,c=1,h,w
+        img_patch_feature = torch.zeros((batch_size, seq_len, self.img_num_patches, self.out_dim)).to(device)
+        imu_patch_feature = torch.zeros((batch_size, seq_len, self.imu_num_patches, self.out_dim)).to(device)
+        for i in range(seq_len):
+            img_patch_feature[:,i,:,:] = self.img_patch_embedding(flow[:,i,:,:,:])
+            img_patch_feature[:,i,:,:] = img_patch_feature[:,i,:,:] + self.img_pos_embedding[:batch_size]
+            img_patch_feature[:,i,:,:] = self.dropout(img_patch_feature[:,i,:,:])
+            
+            imu_patch_feature[:,i,:,:] = self.imu_patch_embedding(imu2image[:batch_size,i,:,:,:])
+            imu_patch_feature[:,i,:,:] = imu_patch_feature[:,i,:,:] + self.imu_pos_embedding[:batch_size]
+            imu_patch_feature[:,i,:,:] = self.dropout(imu_patch_feature[:batch_size,i,:,:])
+        #--这是patch=16的结果--img_feature [16,10,512,768] imu同样维度
+        
+        all_feature = torch.cat((img_patch_feature, imu_patch_feature), dim=2)
+        #去掉imu，再试一下利用率会不会有变化
+        # all_feature = img_patch_feature
+        out_feature = torch.zeros_like(all_feature).to(device)
+        for i in range(seq_len):
+            out_feature[:,i,:,:] = self.transformer_fusion(all_feature[:,i,:,:])            
+        pre_fused_feat = torch.flatten(out_feature, start_dim=2)
+        fused_feat = self.convert(pre_fused_feat)
+        #跟以前一样
+        src_seq_len = seq_len
+        feature_dim = fused_feat.shape[2]
+        if self.gt_visibility is True:
+            src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
+            target = self.linear(gt_pose)
+            
+            fused_feat = fused_feat.transpose(1, 0)
+            target = target.transpose(1, 0)
+        else:
+            src_mask, tgt_mask = create_mask(src=fused_feat, tgt=gt_pose)
+            if self.zero_input:
+                target = torch.zeros((seq_len, batch_size, self.feature_dim), device=device)
+            else:
+                target = self.linear(torch.ones((seq_len, batch_size, 6), device=device))
+            fused_feat = fused_feat.transpose(1, 0)
+
+        pos_fused_feat = self.positional_encoding(fused_feat) # seq = 20, [0:10] = history, [10:20] = current
+        pos_target = self.positional_encoding(target)         # seq = 20, [0:10] = history, [10:20] = current
+
+        pos_fused_feat = pos_fused_feat.transpose(1, 0)
+        pos_target = pos_target.transpose(1, 0)
+
+        src_mask = torch.zeros((src_seq_len, src_seq_len),device=device).type(torch.bool)
+
+        if self.with_src_mask:
+            memory = self.transformer.encoder(pos_fused_feat, tgt_mask, None)    # [10,16,768]
+        else:
+            memory = self.transformer.encoder(pos_fused_feat, src_mask, None)    # [10,16,768]
+
+        if self.only_encoder is True:
+            pose = self.generator(memory)
+            return pose, history_out
+        out = self.transformer.decoder(memory, pos_target, history_out=None, tgt_mask=tgt_mask) # [10,16,768]  decoder中像dino一样用memory做SA
+        pose = self.generator(out)  # 输出出来的out应该是[10,1,768]
+        return pose, history_out
+
+class TransFusionOdom_CNN(nn.Module):
+    def __init__(self, opt):
+        super(TransFusionOdom_CNN, self).__init__()
+
+        self.opt = opt
+        self.patch_height, self.patch_width = pair(opt.patch_size)
+        #初始化resent提特征以及transformer融合
+        self.image_imu_encoder = Encoder(config)
+        img_channel = 6   #光流是2，图片是6
+        assert self.opt.img_h % self.patch_height == 0 and self.opt.img_w % self.patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+        assert self.opt.imu_height % self.patch_height == 0 and self.opt.imu_width % self.patch_width == 0, 'IMU2image dimensions must be divisible by the patch size.'
+        
+        self.img_num_patches = (self.opt.img_h // self.patch_height) * (self.opt.img_w // self.patch_width)
+        self.imu_num_patches = (self.opt.imu_height // self.patch_height) * (self.opt.imu_width // self.patch_width)
+        img_patch_dim = img_channel * self.patch_height * self.patch_width
+        
+        self.out_dim = self.opt.out_dim
+        imu_channel = 1
+        imu_patch_dim = imu_channel * self.patch_height * self.patch_width
+        self.img_patch_embedding = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
+            nn.LayerNorm(img_patch_dim),
+            nn.Linear(img_patch_dim, self.out_dim),
+            nn.LayerNorm(self.out_dim),
+        )
+        imu_patch_dim = imu_channel * self.patch_height * self.patch_width
+        #img采用可学习的
+        self.imu_patch_embedding = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = self.patch_height, p2 = self.patch_width),
+            nn.LayerNorm(imu_patch_dim),
+            nn.Linear(imu_patch_dim, self.out_dim),
+            nn.LayerNorm(self.out_dim),
+        )# self.opt.batch_size
+        self.img_pos_embedding = nn.Parameter(torch.randn(16, self.img_num_patches, self.out_dim))
+        self.imu_pos_embedding = nn.Parameter(torch.randn(16, self.imu_num_patches, self.out_dim))
+        self.dropout = nn.Dropout(p=0.1)
+        # 没必要对imu加入位置编码吧
+        # self.imu_pos_embedding = PositionalEncoding(emb_size=self.out_dim, dropout=0.1)
+        #fusion transformer
+        self.transformer_fusion = Transformer(self.out_dim, 1, 8, self.out_dim / 8, self.out_dim, 0.1)
+        #inference transformer encoder
+        self.gt_visibility = opt.gt_visibility
+        self.with_src_mask = opt.with_src_mask
+        self.only_encoder = opt.only_encoder
+        self.zero_input = opt.zero_input
+        self.feature_dim = (self.imu_num_patches + self.img_num_patches) * self.out_dim  #进入transformer的维度
+        # self.feature_dim = self.img_num_patches * self.out_dim
+        if self.zero_input is not True:
+            self.linear = nn.Linear(6, 1024) #这里之前也是self.feature_dim，这里为了测试改为这个
+        self.transformer = TemporalTransformer(opt, 
+                                       d_model=1024,# 这里之前也是self.feature_dim，这里为了测试改为这个
+                                       nhead=8, 
+                                       num_encoder_layers=opt.encoder_layer_num, 
+                                       num_decoder_layers=opt.decoder_layer_num, dropout=0.1, 
+                                       dim_feedforward=512,  batch_first=True)#dim_feedforward可以改，一般大于out_dim
+        self.generator = nn.Linear(1024, 6) # 这里是6维
+        self.positional_encoding = PositionalEncoding(emb_size=1024, dropout=0.1)
+        #上一个人为的改为1024，不用时可以恢复为之前的维度-》emb_size=self.feature_dim
+        #计算光流
+        self.Feature_net = flownet()#输出[16,2,64,128]
+        
+        #变成一维特征向量
+        # self.covert1D = nn.Sequential(
+        #     Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', ),
+        #     nn.Conv2d(4096, N, kernel_size=1, stride=1, padding=0),
+            
+        # )
+        self.convert = nn.Linear((self.img_num_patches + self.imu_num_patches) * self.out_dim, 1024)
+        initialization(self)
+
+    def forward(self, img, imu, is_training=True, selection='gumbel-softmax', history_out = None, gt_pose = None):
+        v = torch.cat((img[:, :-1], img[:, 1:]), dim=2) # 构建 t->t+1 对
+        device = img.device
+        # 这部分是用于光流做patch的。
+        # flow = []
+        # for i in range(v.shape[1]):
+        #     flow.append(self.Feature_net(v[:,i,:,:,:]))
+        # flow = torch.stack(flow, dim=0).transpose(1,0)
+        flow = v
+        batch_size, seq_len, img_channel, image_height, image_width = flow.shape
+        imu2image = pre_IMU(imu, self.opt.imu_height, self.opt.imu_width)#b,q,h,w
+        imu2image = imu2image.unsqueeze(2).to(device)#b,q,c=1,h,w
+        fused_feature = self.image_imu_encoder(flow.transpose(1,0), imu2image.transpose(1,0))
+        
         img_patch_feature = torch.zeros((batch_size, seq_len, self.img_num_patches, self.out_dim)).to(device)
         imu_patch_feature = torch.zeros((batch_size, seq_len, self.imu_num_patches, self.out_dim)).to(device)
         for i in range(seq_len):

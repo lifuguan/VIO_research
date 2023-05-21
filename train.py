@@ -5,7 +5,7 @@ import logging
 from path import Path
 from utils import custom_transform
 from dataset.KITTI_dataset import KITTI
-from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer, DeepVIOTransformer, TransFusionOdom
+from model import DeepVIO, DeepVIO2, DeepVIOVanillaTransformer, DeepVIOOldTransformer, DeepVIOTransformer, TransFusionOdom, TransFusionOdom_CNN
 from collections import defaultdict
 from utils.kitti_eval import KITTI_tester
 import numpy as np
@@ -246,6 +246,8 @@ def main():
         model = DeepVIOTransformer(args)
     elif args.model_type == 'transfusionodom':
         model = TransFusionOdom(args)
+    elif args.model_type == 'transfusionodom_cnn':
+        model = TransFusionOdom_CNN(args)
 
     # Continual training or not
     if args.pretrain is not None:
