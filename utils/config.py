@@ -36,7 +36,7 @@ class GlobalConfig:
 
     # Conv Encoder
     vert_anchors = 8
-    horz_anchors = 8
+    horz_anchors = 16
     anchors = vert_anchors * horz_anchors
 
 	# GPT Encoder

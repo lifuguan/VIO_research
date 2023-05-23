@@ -105,8 +105,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "--gpu_ids","1",
-                "--batch_size","16",
+                "--gpu_ids","0",
+                "--batch_size","2",
                 "--data_dir","./data/data",
                 "--experiment_name","debug",
                 "--model", "transfusionodom_cnn",

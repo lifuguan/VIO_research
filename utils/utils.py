@@ -252,6 +252,7 @@ def pre_IMU(imus, target_height, target_width):
     imus = imus.to("cpu")
     IMU_FREQ = 10
     imu_data = imus
+    batch_size = imus.shape[0]
     length = imus.shape[1]
     # 定义滤波器参数
     window_length = 33  # 滑动窗口的长度
@@ -278,7 +279,7 @@ def pre_IMU(imus, target_height, target_width):
 
     normalized_data = normalized_data*255
     # normalized_data.astype(np.uint8)
-    resized_image = torch.zeros((16, 10, target_height, target_width))
+    resized_image = torch.zeros((batch_size, 10, target_height, target_width))
     normalized_data = torch.from_numpy(normalized_data).to(device)
     for i in range(normalized_data.shape[0]):
         for j in range(10):
@@ -397,11 +398,10 @@ class IMUEncoder(nn.Module):
         in_channels: input channels
     """
 
-    def __init__(self, num_classes=512, in_channels=2):
+    def __init__(self, num_classes=512, in_channels=1):
         super().__init__()
         
         self._model = models.resnet18()
-        self._model.conv1 = nn.Conv2d(1,64,kernel_size=7,stride=2,padding=3,bias=False)
         self._model.fc = nn.Sequential()
         _tmp = self._model.conv1
         self._model.conv1 = nn.Conv2d(in_channels, out_channels=_tmp.out_channels, 
@@ -492,11 +492,7 @@ class GPT(nn.Module):
 
         # positional embedding parameter (learnable), image + lidar
         self.pos_emb = nn.Parameter(torch.zeros(1, (self.config.n_views + 1) * seq_len * vert_anchors * horz_anchors, n_embd))
-        
-        # velocity embedding
-        self.vel_emb = nn.Linear(1, n_embd)
         self.drop = nn.Dropout(embd_pdrop)
-
         # transformer
         self.blocks = nn.Sequential(*[Block(n_embd, n_head, 
                         block_exp, attn_pdrop, resid_pdrop)
@@ -552,7 +548,7 @@ class GPT(nn.Module):
 
         return optim_groups
 
-    def forward(self, image_tensor, lidar_tensor, velocity):
+    def forward(self, image_tensor, lidar_tensor):
         """
         Args:
             image_tensor (tensor): B*4*seq_len, C, H, W
@@ -571,11 +567,8 @@ class GPT(nn.Module):
         token_embeddings = torch.cat([image_tensor, lidar_tensor], dim=1).permute(0,1,3,4,2).contiguous()
         token_embeddings = token_embeddings.view(bz, -1, self.n_embd) # (B, an * T, C)
 
-        # project velocity to n_embed
-        velocity_embeddings = self.vel_emb(velocity.unsqueeze(1)) # (B, C)
-
         # add (learnable) positional embedding and velocity embedding for all tokens
-        x = self.drop(self.pos_emb + token_embeddings + velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
+        x = self.drop(self.pos_emb + token_embeddings) # (B, an * T, C)
         # x = self.drop(token_embeddings + velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
         x = self.blocks(x) # (B, an * T, C)
         x = self.ln_f(x) # (B, an * T, C)
@@ -599,7 +592,7 @@ class Encoder(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((self.config.vert_anchors, self.config.horz_anchors))
         
         self.image_encoder = ImageCNN(512, normalize=True)
-        self.lidar_encoder = IMUEncoder(num_classes=512, in_channels=2)
+        self.lidar_encoder = IMUEncoder(num_classes=512, in_channels=1)
 
         self.transformer1 = GPT(n_embd=64,
                             n_head=config.n_head, 
@@ -677,40 +670,41 @@ class Encoder(nn.Module):
 
         image_features = self.image_encoder.features.layer1(image_features)
         lidar_features = self.lidar_encoder._model.layer1(lidar_features)
-        # fusion at (B, 64, 64, 64)
-        image_embd_layer1 = self.avgpool(image_features)
-        lidar_embd_layer1 = self.avgpool(lidar_features)
-        image_features_layer1, lidar_features_layer1 = self.transformer1(image_embd_layer1, lidar_embd_layer1)
-        image_features_layer1 = F.interpolate(image_features_layer1, scale_factor=8, mode='bilinear')
-        lidar_features_layer1 = F.interpolate(lidar_features_layer1, scale_factor=8, mode='bilinear')
-        image_features = image_features + image_features_layer1
-        lidar_features = lidar_features + lidar_features_layer1
+        # fusion at (B, 64, 64, 128)
+        # image_embd_layer1 = self.avgpool(image_features)
+        # lidar_embd_layer1 = self.avgpool(lidar_features)
+        # 减小计算量，取消融合的部分
+        # image_features_layer1, lidar_features_layer1 = self.transformer1(image_embd_layer1, lidar_embd_layer1)
+        # image_features_layer1 = F.interpolate(image_features_layer1, scale_factor=8, mode='bilinear')
+        # lidar_features_layer1 = F.interpolate(lidar_features_layer1, scale_factor=8, mode='bilinear')
+        # image_features = image_features + image_features_layer1
+        # lidar_features = lidar_features + lidar_features_layer1
 
         image_features = self.image_encoder.features.layer2(image_features)
         lidar_features = self.lidar_encoder._model.layer2(lidar_features)
-        # fusion at (B, 128, 32, 32)
-        image_embd_layer2 = self.avgpool(image_features)
-        lidar_embd_layer2 = self.avgpool(lidar_features)
-        image_features_layer2, lidar_features_layer2 = self.transformer2(image_embd_layer2, lidar_embd_layer2)
-        image_features_layer2 = F.interpolate(image_features_layer2, scale_factor=4, mode='bilinear')
-        lidar_features_layer2 = F.interpolate(lidar_features_layer2, scale_factor=4, mode='bilinear')
-        image_features = image_features + image_features_layer2
-        lidar_features = lidar_features + lidar_features_layer2
+        # fusion at (B, 128, 32, 64)
+        # image_embd_layer2 = self.avgpool(image_features)
+        # lidar_embd_layer2 = self.avgpool(lidar_features)
+        # image_features_layer2, lidar_features_layer2 = self.transformer2(image_embd_layer2, lidar_embd_layer2)
+        # image_features_layer2 = F.interpolate(image_features_layer2, scale_factor=4, mode='bilinear')
+        # lidar_features_layer2 = F.interpolate(lidar_features_layer2, scale_factor=4, mode='bilinear')
+        # image_features = image_features + image_features_layer2
+        # lidar_features = lidar_features + lidar_features_layer2
 
         image_features = self.image_encoder.features.layer3(image_features)
         lidar_features = self.lidar_encoder._model.layer3(lidar_features)
-        # fusion at (B, 256, 16, 16)
-        image_embd_layer3 = self.avgpool(image_features)
-        lidar_embd_layer3 = self.avgpool(lidar_features)
-        image_features_layer3, lidar_features_layer3 = self.transformer3(image_embd_layer3, lidar_embd_layer3)
-        image_features_layer3 = F.interpolate(image_features_layer3, scale_factor=2, mode='bilinear')
-        lidar_features_layer3 = F.interpolate(lidar_features_layer3, scale_factor=2, mode='bilinear')
-        image_features = image_features + image_features_layer3
-        lidar_features = lidar_features + lidar_features_layer3
+        # fusion at (B, 256, 16, 32)
+        # image_embd_layer3 = self.avgpool(image_features)
+        # lidar_embd_layer3 = self.avgpool(lidar_features)
+        # image_features_layer3, lidar_features_layer3 = self.transformer3(image_embd_layer3, lidar_embd_layer3)
+        # image_features_layer3 = F.interpolate(image_features_layer3, scale_factor=2, mode='bilinear')
+        # lidar_features_layer3 = F.interpolate(lidar_features_layer3, scale_factor=2, mode='bilinear')
+        # image_features = image_features + image_features_layer3
+        # lidar_features = lidar_features + lidar_features_layer3
 
         image_features = self.image_encoder.features.layer4(image_features)
         lidar_features = self.lidar_encoder._model.layer4(lidar_features)
-        # fusion at (B, 512, 8, 8)
+        # fusion at (B, 512, 8, 16)
         image_embd_layer4 = self.avgpool(image_features)
         lidar_embd_layer4 = self.avgpool(lidar_features)
         image_features_layer4, lidar_features_layer4 = self.transformer4(image_embd_layer4, lidar_embd_layer4)
@@ -723,8 +717,12 @@ class Encoder(nn.Module):
         lidar_features = self.lidar_encoder._model.avgpool(lidar_features)
         lidar_features = torch.flatten(lidar_features, 1)
         lidar_features = lidar_features.view(bz, self.config.seq_len, -1)
-
-        fused_features = torch.cat([image_features, lidar_features], dim=1)
-        fused_features = torch.sum(fused_features, dim=1)
+        #sum的做法
+        # fused_features = image_features + lidar_features
+        #对照试验 concat的做法
+        fused_features = torch.cat([image_features, lidar_features], dim=2)
+        # 原本的做法
+        # fused_features = torch.cat([image_features, lidar_features], dim=2)
+        # fused_features = torch.sum(fused_features, dim=1)
 
         return fused_features
